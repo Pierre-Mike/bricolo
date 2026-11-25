@@ -418,21 +418,23 @@ mod tests {
         }
     }
 
+    // A program path that is absolute here, or the shell grant refuses it.
+    const PROGRAM: &str = if cfg!(windows) {
+        r"C:\Windows\System32\cmd.exe"
+    } else {
+        "/usr/bin/xterm"
+    };
+
     #[tokio::test]
     async fn creates_drives_and_destroys_a_screen() {
         let dir = tempfile::tempdir().unwrap();
         let fake = Fake::default();
         let v = VirtualScreens::new(fake.clone(), dir.path().to_path_buf());
-        let a = caller("a", &["/usr/bin/xterm"]);
+        let a = caller("a", &[PROGRAM]);
         let s = v.create(&a, 1280, 800).await.unwrap();
         assert_eq!((s.id, s.name.as_str(), s.width), (1, ":99", 1280));
         let pid = v
-            .launch(
-                &a,
-                1,
-                "/usr/bin/xterm".into(),
-                vec!["-e".into(), "top".into()],
-            )
+            .launch(&a, 1, PROGRAM.into(), vec!["-e".into(), "top".into()])
             .await
             .unwrap();
         assert_eq!(v.list(&a).await.unwrap()[0].pids, [pid]);

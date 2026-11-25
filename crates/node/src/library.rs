@@ -2,6 +2,10 @@
 //! library, who may call each capability, and the OS grants the node
 //! holds; `{"cmd":"open-settings","grant":"microphone"}` opens the System
 //! Settings pane where you turn a grant on or off.
+//!
+//! A grant's state is `granted`, `missing`, `not-asked`, `n/a` off macOS,
+//! or `restart`: macOS holds it for the node, but the node only sees it
+//! after a restart (`{"cmd":"restart-node"}`).
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -14,6 +18,11 @@ use serde_json::{Value, json};
 pub struct Facts {
     pub capabilities: Vec<Capability>,
     pub held: Permissions,
+    /// What a new process of the node's program reads now, when the node
+    /// asked one. macOS answers posting events, Input Monitoring and
+    /// Screen Recording once per process, so a grant turned on after the
+    /// node started shows here and not in `held`.
+    pub fresh: Option<Permissions>,
     pub not_asked: Vec<&'static str>,
     pub holder: String,
     /// Installed plugin to the capabilities approved in permissions.toml,
@@ -50,6 +59,7 @@ pub fn answer(facts: &Facts) -> Value {
             let state = match facts.held.get(g.name) {
                 None => "n/a",
                 Some(true) => "granted",
+                Some(false) if facts.fresh.and_then(|f| f.get(g.name)) == Some(true) => "restart",
                 Some(false) if facts.not_asked.contains(&g.name) => "not-asked",
                 Some(false) => "missing",
             };
@@ -136,6 +146,7 @@ mod tests {
                 camera: Some(false),
                 screen_recording: Some(false),
             },
+            fresh: None,
             not_asked: vec!["camera"],
             holder: "bricolo node".into(),
             plugin_grants: BTreeMap::from([
@@ -171,6 +182,30 @@ mod tests {
         assert_eq!(capability(&a, "mic")["needs"], "microphone");
         assert_eq!(a["scripts"], json!(["speak"]));
         assert_eq!(a["holder"], "bricolo node");
+    }
+
+    #[test]
+    fn a_grant_only_a_new_process_sees_asks_for_a_restart() {
+        let a = answer(&Facts {
+            fresh: Some(Permissions {
+                screen_recording: Some(true),
+                input_monitoring: Some(false),
+                ..Permissions::default()
+            }),
+            ..facts()
+        });
+        let state = |name: &str| {
+            a["grants"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|g| g["name"] == name)
+                .unwrap()["state"]
+                .clone()
+        };
+        assert_eq!(state("screen_recording"), "restart");
+        assert_eq!(state("input_monitoring"), "missing");
+        assert_eq!(state("accessibility"), "granted");
     }
 
     #[test]
