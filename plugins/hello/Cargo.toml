@@ -1,0 +1,13 @@
+[package]
+name = "hello"
+description = "The smallest plugin. The runtime's integration tests load it."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen.workspace = true

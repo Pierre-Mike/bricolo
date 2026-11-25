@@ -1,0 +1,10 @@
+/// The text selected in the frontmost app. Needs the Accessibility
+/// permission on macOS; without it calls answer `denied`. Always runs on
+/// this node.
+interface selection {
+  use types.{call-error};
+
+  /// The selected text, or none when nothing is selected or the app does
+  /// not say.
+  get-text: async func() -> result<option<string>, call-error>;
+}

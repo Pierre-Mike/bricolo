@@ -1,0 +1,7 @@
+/// The system clipboard, plain text only.
+interface clipboard {
+  use types.{call-error};
+
+  get: async func() -> result<option<string>, call-error>;
+  set: async func(text: string) -> result<_, call-error>;
+}

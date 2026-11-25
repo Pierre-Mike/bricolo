@@ -1,0 +1,32 @@
+/// The volume, brightness, Wi-Fi, appearance, Focus, lock and sleep of
+/// this device. Always runs on this node. A setting the system has no way
+/// to change here answers `unavailable`.
+interface device {
+  use types.{call-error};
+
+  /// Output volume, 0 to 100.
+  volume: async func() -> result<u8, call-error>;
+  set-volume: async func(level: u8) -> result<_, call-error>;
+  muted: async func() -> result<bool, call-error>;
+  set-muted: async func(muted: bool) -> result<_, call-error>;
+  /// Brightness of the built-in display, 0 to 100.
+  brightness: async func() -> result<u8, call-error>;
+  set-brightness: async func(level: u8) -> result<_, call-error>;
+  /// Whether Wi-Fi is on.
+  wifi: async func() -> result<bool, call-error>;
+  /// Turns Wi-Fi on or off. Off can cut this node off from its peers and
+  /// from the agent driving it.
+  set-wifi: async func(on: bool) -> result<_, call-error>;
+  /// Whether the system shows dark windows.
+  dark-mode: async func() -> result<bool, call-error>;
+  set-dark-mode: async func(on: bool) -> result<_, call-error>;
+  /// Whether Do Not Disturb, or Focus on macOS, holds notifications back.
+  focus-mode: async func() -> result<bool, call-error>;
+  /// On macOS it runs the shortcuts `bricolo focus on` and `bricolo focus off`,
+  /// which the user makes once in Shortcuts with "Set Focus".
+  set-focus-mode: async func(on: bool) -> result<_, call-error>;
+  /// Locks the screen. The user needs their password to come back.
+  lock: async func() -> result<_, call-error>;
+  /// Puts the device to sleep. The node stops answering until it wakes.
+  sleep: async func() -> result<_, call-error>;
+}

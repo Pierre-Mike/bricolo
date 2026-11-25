@@ -1,0 +1,11 @@
+/// Timers. `after` and `every` return an id at once; `timer(id)` events follow.
+interface timer {
+  /// Fires once after `ms` milliseconds.
+  after: func(ms: u32) -> u64;
+  /// Fires every `ms` milliseconds (at least 10) until cancelled.
+  every: func(ms: u32) -> u64;
+  /// Cancels a timer this plugin started. Unknown ids are ignored.
+  cancel: func(id: u64);
+  /// Waits `ms` milliseconds without blocking the node.
+  sleep: async func(ms: u32);
+}

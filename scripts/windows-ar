@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Archiver for `just check-windows`: Apple's ar drops the COFF objects zig
+# cc builds (vendored Lua), as it drops the ELF ones for Linux.
+exec zig ar "$@"

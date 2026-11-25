@@ -1,0 +1,44 @@
+//! __NAME__: a bricolo plugin.
+//!
+//! `domain.rs` holds the logic as plain functions, tested with
+//! `cargo test`. This file is the adapter: it calls the capabilities and
+//! passes their results to the domain.
+//!
+//! Build:   cargo build --target wasm32-wasip2 --release
+//! Check:   bricolo check .
+//! Install: bricolo install . -y
+
+// The generated `event` bindings take more than seven arguments.
+#![allow(clippy::too_many_arguments)]
+
+mod domain;
+
+wit_bindgen::generate!({
+    path: "__WIT__",
+    world: "bricolo:stdlib/plugin",
+});
+
+use bricolo::stdlib::kv;
+use bricolo::stdlib::log::{self, Level};
+
+struct Plugin;
+
+impl Guest for Plugin {
+    /// `config` is this plugin's settings as JSON.
+    async fn init(config: String) -> Result<(), String> {
+        let runs = domain::next_run(kv::get("runs").as_deref());
+        kv::set("runs", &runs.to_string()).map_err(|e| format!("kv: {e:?}"))?;
+        log::write(Level::Info, &domain::greeting(&config, runs));
+        Ok(())
+    }
+
+    async fn on_event(event: Event) {
+        log::write(Level::Debug, &format!("event {event:?}"));
+    }
+
+    async fn dispose() {
+        log::write(Level::Info, "stopping");
+    }
+}
+
+export!(Plugin);

@@ -1,0 +1,517 @@
+{
+  "nodes": [
+    {
+      "id": "g-read",
+      "type": "group",
+      "x": -1230,
+      "y": -60,
+      "width": 1360,
+      "height": 526,
+      "label": "Start here",
+      "color": "3"
+    },
+    {
+      "id": "g-apps",
+      "type": "group",
+      "x": -1230,
+      "y": 546,
+      "width": 1460,
+      "height": 298,
+      "label": "5. Apps",
+      "color": "5"
+    },
+    {
+      "id": "g-iface",
+      "type": "group",
+      "x": -1230,
+      "y": 924,
+      "width": 960,
+      "height": 350,
+      "label": "4. One interface for every app",
+      "color": "4"
+    },
+    {
+      "id": "g-node",
+      "type": "group",
+      "x": -1230,
+      "y": 1354,
+      "width": 1460,
+      "height": 702,
+      "label": "In between: the node checks permissions and picks where to run",
+      "color": "6"
+    },
+    {
+      "id": "g-impl",
+      "type": "group",
+      "x": -1230,
+      "y": 2540,
+      "width": 2460,
+      "height": 324,
+      "label": "One implementation per OS",
+      "color": "1"
+    },
+    {
+      "id": "g-stdlib",
+      "type": "group",
+      "x": -1270,
+      "y": 2096,
+      "width": 2540,
+      "height": 808,
+      "label": "3. Standard library, in Rust",
+      "color": "1"
+    },
+    {
+      "id": "g-os",
+      "type": "group",
+      "x": -1230,
+      "y": 2944,
+      "width": 1385,
+      "height": 236,
+      "label": "2. Operating system"
+    },
+    {
+      "id": "g-hw",
+      "type": "group",
+      "x": -230,
+      "y": 3260,
+      "width": 460,
+      "height": 236,
+      "label": "1. Hardware"
+    },
+    {
+      "id": "g-ref",
+      "type": "group",
+      "x": -1230,
+      "y": 3576,
+      "width": 1700,
+      "height": 628,
+      "label": "Reference",
+      "color": "3"
+    },
+    {
+      "id": "legend",
+      "type": "text",
+      "x": -1200,
+      "y": 0,
+      "width": 620,
+      "height": 436,
+      "text": "# How bricolo is built\n\nRead from the bottom up:\n\n1. **Hardware**: camera, mic, keyboard, screen.\n2. **OS**: macOS, Linux, Windows talk to the hardware.\n3. **Standard library, in Rust**: one implementation per OS, sitting right on the OS.\n4. **One interface** (`wit/`): the same calls for every app on every OS.\n5. **Apps**: plugins and scripts, written once, run everywhere.\n\nBetween the interface and the standard library, the node checks permissions and decides whether the call runs here or on another device.\n\nAn OS without an implementation answers `unavailable`. The app keeps working and handles that answer.",
+      "color": "3"
+    },
+    {
+      "id": "walkthrough",
+      "type": "text",
+      "x": -520,
+      "y": 0,
+      "width": 620,
+      "height": 426,
+      "text": "# One call, end to end\n\nDictation: hold Fn to talk.\n\n1. Script: `bricolo.hotkey.bind(\"fn\", on_press, on_release)`\n2. Interface: `hotkey.bind` in `wit/hotkey.wit`\n3. Lua tier runs it in a coroutine\n4. Router: `hotkey` is not routable, so it stays on this Mac\n5. Standard library: `HotkeyProvider` trait, then `macos/hotkey.rs` and `macos/fn_key.rs`\n6. macOS: an event tap (needs Input Monitoring)\n7. Hardware: the Fn key\n\nThe press comes back up the same way, as the event `hotkey(id)`, then `hotkey-released(id)` when you let go. On Linux, step 5 answers `unavailable` because X11 can't see Fn.",
+      "color": "3"
+    },
+    {
+      "id": "scripts",
+      "type": "text",
+      "x": -1200,
+      "y": 606,
+      "width": 400,
+      "height": 182,
+      "text": "## Lua scripts\n\n`scripts/*.lua`, `examples/apps`\n\nQuick personal automations. Trusted. Call the `bricolo` global.",
+      "color": "5"
+    },
+    {
+      "id": "plugins",
+      "type": "text",
+      "x": -700,
+      "y": 606,
+      "width": 400,
+      "height": 208,
+      "text": "## WASM plugins\n\n`plugins/`, made with `bricolo new`\n\nRust compiled to WebAssembly. Sandboxed: they can only use what you approved at install (`plugin.toml`).",
+      "color": "5"
+    },
+    {
+      "id": "clients",
+      "type": "text",
+      "x": -200,
+      "y": 606,
+      "width": 400,
+      "height": 172,
+      "text": "## Control tools\n\n`bricolo` CLI: `bricolo status`, `bricolo fire`, `bricolo call`\n`bricolo-ui` hub: tiles, toggles, logs",
+      "color": "5"
+    },
+    {
+      "id": "wit",
+      "type": "text",
+      "x": -700,
+      "y": 984,
+      "width": 400,
+      "height": 260,
+      "text": "## One interface: `wit/`\n\nPackage `bricolo:stdlib@0.1.0`. One file per capability: `hotkey.wit`, `mic.wit`, `clipboard.wit`...\n\nOnly describes the calls, no code. Never names an OS. Every call can fail with `unavailable`, `timeout`, `denied` or `failed`.",
+      "color": "4"
+    },
+    {
+      "id": "lua-bricolo",
+      "type": "text",
+      "x": -1200,
+      "y": 984,
+      "width": 400,
+      "height": 208,
+      "text": "## Same interface for Lua\n\n`crates/lua/src/stdlib.rs`\n\nThe `bricolo` global exposes the same calls to scripts: `bricolo.hotkey`, `bricolo.mic`, `bricolo.clipboard`...",
+      "color": "4"
+    },
+    {
+      "id": "lua-tier",
+      "type": "text",
+      "x": -1200,
+      "y": 1414,
+      "width": 400,
+      "height": 182,
+      "text": "## Lua tier\n\n`crates/lua`\n\nRuns scripts in a sandbox, waits on calls with coroutines, reloads on save.",
+      "color": "6"
+    },
+    {
+      "id": "runtime",
+      "type": "text",
+      "x": -700,
+      "y": 1414,
+      "width": 400,
+      "height": 208,
+      "text": "## Runtime (Wasmtime)\n\n`crates/runtime`\n\nLoads plugins, checks their permissions, limits CPU and memory, restarts a crashed plugin once.",
+      "color": "6"
+    },
+    {
+      "id": "control",
+      "type": "text",
+      "x": -200,
+      "y": 1414,
+      "width": 400,
+      "height": 182,
+      "text": "## Control socket\n\n`bricolo.sock`, `crates/node/src/control.rs`\n\nWhere the CLI and the hub talk to the running node. Only one node can own it.",
+      "color": "6"
+    },
+    {
+      "id": "router",
+      "type": "text",
+      "x": -1200,
+      "y": 1792,
+      "width": 400,
+      "height": 234,
+      "text": "## Router\n\n`crates/router`, `rules.toml`\n\nDecides where a call runs. `tts`, `speech`, `disk`, `clipboard`, `notify` can run on another device. Everything else always runs here.",
+      "color": "2"
+    },
+    {
+      "id": "mesh",
+      "type": "text",
+      "x": -700,
+      "y": 1792,
+      "width": 400,
+      "height": 182,
+      "text": "## Mesh\n\n`crates/mesh` (iroh)\n\nEncrypted connection to your other devices. Carries calls and audio.",
+      "color": "2"
+    },
+    {
+      "id": "peer",
+      "type": "text",
+      "x": -200,
+      "y": 1792,
+      "width": 400,
+      "height": 172,
+      "text": "## Another device\n\nRuns the same node, with its own standard library. Example: a desktop with a GPU doing speech-to-text for your Mac.",
+      "color": "2"
+    },
+    {
+      "id": "traits",
+      "type": "text",
+      "x": -200,
+      "y": 2196,
+      "width": 400,
+      "height": 234,
+      "text": "## The contract in Rust\n\n`crates/providers/src/<capability>.rs`\n\nOne Rust trait per capability (`HotkeyProvider`, `ClipboardProvider`...) and a `No...` stub that answers `unavailable`. Each OS implementation below fills in the trait.",
+      "color": "1"
+    },
+    {
+      "id": "portable",
+      "type": "text",
+      "x": -1200,
+      "y": 2600,
+      "width": 400,
+      "height": 208,
+      "text": "## Same code on every OS\n\n`log`, `timer`, `kv`, `disk`, `shell`, `http`, `ui`, `mic` (through ffmpeg)\n\nRust's own library already hides the OS for these.",
+      "color": "1"
+    },
+    {
+      "id": "macos",
+      "type": "text",
+      "x": -700,
+      "y": 2600,
+      "width": 400,
+      "height": 208,
+      "text": "## macOS implementation\n\n`crates/providers/src/macos/`\n\nHotkeys and the Fn key, clipboard, windows (Accessibility), apps, notifications, keyboard (CGEvent), voice (`say`).",
+      "color": "1"
+    },
+    {
+      "id": "linux",
+      "type": "text",
+      "x": -200,
+      "y": 2600,
+      "width": 400,
+      "height": 234,
+      "text": "## Linux implementation\n\n`crates/providers/src/linux/`\n\nWindows, hotkeys, apps, keyboard on X11. Clipboard (X11 and Wayland), notifications (D-Bus), voice (espeak-ng). No Fn key, no key releases.",
+      "color": "1"
+    },
+    {
+      "id": "windows",
+      "type": "text",
+      "x": 300,
+      "y": 2600,
+      "width": 400,
+      "height": 172,
+      "text": "## Windows implementation\n\nNot written yet. Every desktop capability uses the `No...` stub and answers `unavailable`.",
+      "color": "1"
+    },
+    {
+      "id": "sidecars",
+      "type": "text",
+      "x": 800,
+      "y": 2600,
+      "width": 400,
+      "height": 234,
+      "text": "## Sidecars\n\n`[sidecars.<name>]` in `node.toml`\n\nHelper servers (Python, Node.js, Rust) the node starts and restarts, for heavy work: Whisper, Parakeet, TTS models on the GPU. `speech` and `tts` call them over HTTP.",
+      "color": "1"
+    },
+    {
+      "id": "os-macos",
+      "type": "text",
+      "x": -1200,
+      "y": 3004,
+      "width": 400,
+      "height": 146,
+      "text": "## macOS\n\nAppKit, CoreGraphics, Accessibility and Input Monitoring permissions"
+    },
+    {
+      "id": "os-linux",
+      "type": "text",
+      "x": -656,
+      "y": 3004,
+      "width": 312,
+      "height": 120,
+      "text": "## Linux\n\nX server or Wayland, D-Bus"
+    },
+    {
+      "id": "os-windows",
+      "type": "text",
+      "x": -125,
+      "y": 3004,
+      "width": 250,
+      "height": 120,
+      "text": "## Windows\n\n(planned)"
+    },
+    {
+      "id": "hardware",
+      "type": "text",
+      "x": -200,
+      "y": 3320,
+      "width": 400,
+      "height": 146,
+      "text": "## Hardware\n\nKeyboard, screen, microphone, camera, speakers, GPU"
+    },
+    {
+      "id": "matrix",
+      "type": "text",
+      "x": -1200,
+      "y": 3636,
+      "width": 900,
+      "height": 538,
+      "text": "# What works where\n\n| Capability | macOS | Linux | Windows |\n|---|---|---|---|\n| hotkey | yes, Fn and releases | X11, no Fn or releases | no |\n| keyboard | yes | X11 | no |\n| window, app | yes | X11 | no |\n| clipboard | yes | X11, Wayland | no |\n| notify | yes | D-Bus | no |\n| tts | `say` or server | espeak-ng or server | server |\n| speech | server | server | server |\n| mic | ffmpeg | ffmpeg | ffmpeg |\n| log, timer, kv, disk, shell, http, ui | yes | yes | yes |\n| camera | not yet | not yet | not yet |\n\n\"no\" means the call answers `unavailable`.",
+      "color": "3"
+    },
+    {
+      "id": "add-camera",
+      "type": "text",
+      "x": -240,
+      "y": 3636,
+      "width": 680,
+      "height": 390,
+      "text": "# Adding a capability: camera\n\n1. **Interface**: `wit/camera.wit`, e.g. `capture() -> result<image, call-error>`, and add it to `wit/world.wit`.\n2. **Contract**: `crates/providers/src/camera.rs` with `CameraProvider` and a `NoCamera` stub.\n3. **Per OS**: `macos/camera.rs` (AVFoundation), `linux/camera.rs` (V4L2). Windows keeps the stub until `windows/camera.rs` exists.\n4. **Wiring**: host bindings in `crates/runtime/src/host.rs`, the Lua `bricolo.camera` table, the permission check.\n5. **Docs**: `just skill-refs`, the table in `docs/apps.md`.\n\nFrom then on every plugin and script calls `camera.capture()` the same way on every OS.",
+      "color": "3"
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-1",
+      "fromNode": "scripts",
+      "toNode": "lua-bricolo",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "label": "bricolo.hotkey.bind(...)"
+    },
+    {
+      "id": "edge-2",
+      "fromNode": "plugins",
+      "toNode": "wit",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "label": "imports"
+    },
+    {
+      "id": "edge-3",
+      "fromNode": "clients",
+      "toNode": "control",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "edge-4",
+      "fromNode": "lua-bricolo",
+      "toNode": "lua-tier",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "edge-5",
+      "fromNode": "wit",
+      "toNode": "runtime",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "edge-6",
+      "fromNode": "control",
+      "toNode": "runtime",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "edge-7",
+      "fromNode": "lua-tier",
+      "toNode": "router",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "edge-8",
+      "fromNode": "runtime",
+      "toNode": "router",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "edge-9",
+      "fromNode": "router",
+      "toNode": "mesh",
+      "fromSide": "right",
+      "toSide": "left",
+      "label": "run elsewhere"
+    },
+    {
+      "id": "edge-10",
+      "fromNode": "mesh",
+      "toNode": "peer",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "edge-11",
+      "fromNode": "router",
+      "toNode": "traits",
+      "fromSide": "right",
+      "toSide": "left",
+      "label": "run here"
+    },
+    {
+      "id": "edge-12",
+      "fromNode": "traits",
+      "toNode": "portable",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "edge-13",
+      "fromNode": "traits",
+      "toNode": "macos",
+      "fromSide": "left",
+      "toSide": "right",
+      "label": "on macOS"
+    },
+    {
+      "id": "edge-14",
+      "fromNode": "traits",
+      "toNode": "linux",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "label": "on Linux"
+    },
+    {
+      "id": "edge-15",
+      "fromNode": "traits",
+      "toNode": "windows",
+      "fromSide": "right",
+      "toSide": "left",
+      "label": "on Windows"
+    },
+    {
+      "id": "edge-16",
+      "fromNode": "traits",
+      "toNode": "sidecars",
+      "fromSide": "right",
+      "toSide": "left",
+      "label": "speech, tts"
+    },
+    {
+      "id": "edge-17",
+      "fromNode": "macos",
+      "toNode": "os-macos",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "edge-18",
+      "fromNode": "linux",
+      "toNode": "os-linux",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "edge-19",
+      "fromNode": "windows",
+      "toNode": "os-windows",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "edge-20",
+      "fromNode": "portable",
+      "toNode": "os-macos",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "edge-21",
+      "fromNode": "sidecars",
+      "toNode": "hardware",
+      "fromSide": "left",
+      "toSide": "right",
+      "label": "GPU"
+    },
+    {
+      "id": "edge-22",
+      "fromNode": "os-macos",
+      "toNode": "hardware",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "edge-23",
+      "fromNode": "os-linux",
+      "toNode": "hardware",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "edge-24",
+      "fromNode": "os-windows",
+      "toNode": "hardware",
+      "fromSide": "bottom",
+      "toSide": "top"
+    }
+  ]
+}

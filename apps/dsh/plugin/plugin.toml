@@ -1,0 +1,28 @@
+name = "dsh"
+version = "0.1.0"
+description = "A hub tile for the DeepSeek Harness web server (the dsh sidecar): open its web UI with the login token, or restart it."
+# Standard library interfaces the component imports. `bricolo check` fails if
+# the component imports one that is not listed here.
+imports = ["log", "timer", "ui", "http", "app", "shell", "disk"]
+# The sidecar's output, read only, for the newest "dsh web: http://…"
+# address with its token.
+permissions = ["disk:read:~/.local/share/bricolo/logs/sidecar-dsh.log"]
+# The built component, relative to this folder. Only `bricolo install` reads it.
+wasm = "target/wasm32-wasip2/release/dsh.wasm"
+
+# `bricolo sidecar restart dsh` restarts the server.
+[shell]
+allow = ["/Users/me/Applications/bricolo.app/Contents/Helpers/bricolo.app/Contents/MacOS/bricolo"]
+
+# The dsh web server, polled for its manifest.
+[http]
+allow = ["127.0.0.1:3080"]
+
+# Defaults passed to init as JSON. Override them in node.toml under
+# [plugins.dsh]. A port, bricolo or server_log that the lists above don't cover
+# is denied.
+[settings]
+port = 3080
+bricolo = "/Users/me/Applications/bricolo.app/Contents/Helpers/bricolo.app/Contents/MacOS/bricolo"
+server_log = "~/.local/share/bricolo/logs/sidecar-dsh.log"
+poll_ms = 15000

@@ -1,0 +1,130 @@
+//! The geometry, with no capability calls and no generated bindings, so
+//! `cargo test` runs it natively. The adapter in lib.rs converts WIT
+//! records to these types and back.
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Area {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Screen {
+    pub frame: Area,
+    /// The frame without the menu bar and the Dock.
+    pub visible: Area,
+    pub main: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Settings {
+    pub chord: String,
+    pub size_percent: u32,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            chord: "ctrl+alt+shift+m".into(),
+            size_percent: 66,
+        }
+    }
+}
+
+impl Settings {
+    /// Reads the settings JSON from `init`. Missing values keep their
+    /// defaults; `size_percent` stays between 10 and 100.
+    pub fn from_json(config: &str) -> Self {
+        let mut settings = Self::default();
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(config) else {
+            return settings;
+        };
+        if let Some(chord) = value["chord"].as_str() {
+            settings.chord = chord.into();
+        }
+        if let Some(p) = value["size_percent"].as_u64() {
+            settings.size_percent = p.clamp(10, 100) as u32;
+        }
+        settings
+    }
+}
+
+/// A window `percent` of `area`'s size, centered in it.
+pub fn centered(area: Area, percent: u32) -> Area {
+    let percent = percent.clamp(10, 100);
+    let width = area.width * percent / 100;
+    let height = area.height * percent / 100;
+    Area {
+        x: area.x + ((area.width - width) / 2) as i32,
+        y: area.y + ((area.height - height) / 2) as i32,
+        width,
+        height,
+    }
+}
+
+/// The screen holding the window's center; else the main screen, then the
+/// first one.
+pub fn screen_for(window: Area, screens: &[Screen]) -> Option<&Screen> {
+    let cx = window.x + (window.width / 2) as i32;
+    let cy = window.y + (window.height / 2) as i32;
+    let holds = |a: &Area| {
+        cx >= a.x && cx < a.x + a.width as i32 && cy >= a.y && cy < a.y + a.height as i32
+    };
+    screens
+        .iter()
+        .find(|s| holds(&s.frame))
+        .or_else(|| screens.iter().find(|s| s.main))
+        .or_else(|| screens.first())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const AREA: Area = Area {
+        x: 0,
+        y: 25,
+        width: 1500,
+        height: 975,
+    };
+
+    fn screen(x: i32, main: bool) -> Screen {
+        let frame = Area {
+            x,
+            y: 0,
+            width: 1000,
+            height: 800,
+        };
+        Screen {
+            frame,
+            visible: frame,
+            main,
+        }
+    }
+
+    #[test]
+    fn centers_inside_the_visible_frame() {
+        let c = centered(AREA, 50);
+        assert_eq!((c.x, c.y, c.width, c.height), (375, 269, 750, 487));
+        assert_eq!(centered(AREA, 100), AREA);
+        // Below 10 % counts as 10 %.
+        assert_eq!(centered(AREA, 0).width, 150);
+    }
+
+    #[test]
+    fn picks_the_screen_under_the_window_center() {
+        let screens = [screen(0, true), screen(1000, false)];
+        let window = Area {
+            x: 900,
+            y: 100,
+            width: 400,
+            height: 300,
+        };
+        assert_eq!(screen_for(window, &screens).unwrap().frame.x, 1000);
+        let lost = Area { x: 9000, ..window };
+        assert!(screen_for(lost, &screens).unwrap().main);
+        assert!(screen_for(window, &[]).is_none());
+    }
+}

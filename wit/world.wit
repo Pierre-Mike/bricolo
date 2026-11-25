@@ -1,0 +1,45 @@
+/// What a plugin may import and must export. A plugin imports only the
+/// interfaces it uses; the node checks those against `plugin.toml` and
+/// `permissions.toml` before it runs any code.
+world plugin {
+  import log;
+  import timer;
+  import hotkey;
+  import tts;
+  import speech;
+  import disk;
+  import clipboard;
+  import kv;
+  import window;
+  import app;
+  import notify;
+  import shell;
+  import http;
+  import ui;
+  import keyboard;
+  import mic;
+  import audio;
+  import system;
+  import files;
+  import mouse;
+  import screen;
+  import selection;
+  import camera;
+  import secrets;
+  import claude-code;
+  import accessibility;
+  import process;
+  import device;
+  import scripting;
+  import virtual-screen;
+
+  use types.{event};
+
+  /// Called once after loading. `config` is the plugin's settings as a JSON
+  /// object: defaults from `plugin.toml`, overridden by `node.toml`.
+  export init: async func(config: string) -> result<_, string>;
+  /// Called for each event, one at a time.
+  export on-event: async func(event: event);
+  /// Called before the plugin stops or reloads.
+  export dispose: async func();
+}

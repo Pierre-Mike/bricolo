@@ -1,0 +1,123 @@
+/// The accessibility tree of an app's windows: read it, find controls, and
+/// click, type into, pick menu items in, or act on them, in the background
+/// where the system allows. Needs the Accessibility permission on macOS
+/// (screenshots also need Screen Recording); uses UI Automation on Windows
+/// and AT-SPI on Linux. Always runs on this node. Prefer shell, files and
+/// http when they can do the job: they are faster and leave the user's
+/// screen alone. Never submit, send, buy or delete through an app unless
+/// the user asked for that.
+///
+/// `app` selects an app by bundle id, name or `pid:<number>`, as
+/// `list-apps` reports them. Element indexes come from the last `snapshot`
+/// of that app: they stay the same while the element exists, and go stale
+/// when it goes away. Every action returns the window's fresh state.
+interface accessibility {
+  use types.{call-error};
+  use window.{rect};
+
+  record ax-app {
+    name: string,
+    bundle-id: option<string>,
+    pid: s32,
+    /// The app the user is working in.
+    frontmost: bool,
+  }
+
+  record ax-window {
+    /// Pass it as `window` to `snapshot`.
+    index: u32,
+    title: string,
+    frame: option<rect>,
+    focused: bool,
+    minimized: bool,
+  }
+
+  /// One read of a window's tree.
+  record app-state {
+    app: string,
+    pid: s32,
+    /// The window's title.
+    window: string,
+    /// One line per element, indented by depth: its index, role, traits,
+    /// name, value and extra actions. Act on the leading index.
+    tree: string,
+    /// How many elements were read. Indexes may be sparse: never infer one.
+    element-count: u32,
+    /// The read stopped at the element or depth limit; lines saying
+    /// `... N more not shown` mark where. Snapshot that element to see them.
+    truncated: bool,
+    /// The element with keyboard focus, if any.
+    focused: option<u32>,
+    /// The PNG of the window, when asked for.
+    screenshot: option<string>,
+  }
+
+  record element {
+    index: u32,
+    role: string,
+    name: option<string>,
+    value: option<string>,
+    frame: option<rect>,
+    enabled: bool,
+    focused: bool,
+    /// The actions `perform` takes for this element.
+    actions: list<string>,
+  }
+
+  /// How sure the node is that an action did what was asked.
+  enum verification {
+    /// The new value or text was read back.
+    verified,
+    /// The system took the action; nothing could be read back.
+    unverified,
+    /// The system took the action, but nothing in the window changed
+    /// within a second. Web and Electron controls often ignore it.
+    suspected-noop,
+    /// Text was read back and differs from what was sent: check before
+    /// typing again.
+    mismatch,
+  }
+
+  record action-result {
+    verification: verification,
+    /// What was checked, or why nothing could be.
+    detail: option<string>,
+    /// The window after the action.
+    state: app-state,
+  }
+
+  /// Apps with a window, the frontmost first.
+  list-apps: async func() -> result<list<ax-app>, call-error>;
+  /// The app's windows, dialogs included.
+  list-windows: async func(app: string) -> result<list<ax-window>, call-error>;
+  /// Reads a window's tree: the focused window, or `window` from
+  /// `list-windows`. `query` prints only elements whose line contains the
+  /// text (any case), with their ancestors. `element` reads only that
+  /// element and what is under it. `screenshot` also saves a PNG of the
+  /// window. Indexes are the same whatever is printed.
+  snapshot: async func(app: string, window: option<u32>, query: option<string>, element: option<u32>, screenshot: option<bool>) -> result<app-state, call-error>;
+  /// The elements whose role, name or value contains `text`, any case.
+  find: async func(app: string, text: string) -> result<list<element>, call-error>;
+  /// Clicks an element through its accessibility action, without moving
+  /// the pointer.
+  click: async func(app: string, element: u32) -> result<action-result, call-error>;
+  /// Sets a field's value, a checkbox, a slider or a popup's choice, and
+  /// reads it back.
+  set-value: async func(app: string, element: u32, value: string) -> result<action-result, call-error>;
+  /// Inserts text at the caret of `element`, or of the focused field when
+  /// none, and reads it back.
+  type-text: async func(app: string, element: option<u32>, text: string) -> result<action-result, call-error>;
+  /// Presses a key or chord, like `return`, `escape`, `tab` or `cmd+a`,
+  /// in the app. Chords that quit, close, log out or lock are refused: use
+  /// the app's own button or menu item.
+  press-key: async func(app: string, key: string) -> result<action-result, call-error>;
+  /// Runs one of the element's listed `actions`.
+  perform: async func(app: string, element: u32, action: string) -> result<action-result, call-error>;
+  /// Picks a menu bar item by its path, like `["File", "Export…"]`. Names
+  /// match any case, with or without a trailing ellipsis.
+  menu: async func(app: string, path: list<string>) -> result<action-result, call-error>;
+  /// Waits until an element's line contains `text`, for up to
+  /// `timeout-ms` (10 seconds when none), and returns those elements.
+  /// Fails with `timeout` when it never shows.
+  wait: async func(app: string, text: string, timeout-ms: option<u32>) -> result<list<element>, call-error>;
+}

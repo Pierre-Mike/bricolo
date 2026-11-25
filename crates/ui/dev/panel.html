@@ -1,0 +1,21 @@
+<!doctype html>
+<!-- Must mirror crates/ui/ui/panel.html: same body, with the fake Tauri first and the real css/js through ../ui/. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>bricolo panel (dev)</title>
+    <script src="fixtures.js"></script>
+    <script src="fake-tauri.js"></script>
+    <link rel="stylesheet" href="../ui/css/theme.css" />
+    <link rel="stylesheet" href="../ui/css/panel.css" />
+    <!-- Dev only: the panel window at its real size, over a grey desktop. -->
+    <style>
+      html { background: #6e737c; }
+      body { width: var(--dev-w); height: var(--dev-h); margin: 48px auto; outline: 1px dashed rgba(255, 255, 255, 0.35); }
+    </style>
+    <script type="module" src="../ui/js/panel.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

@@ -1,0 +1,13 @@
+[package]
+name = "probe"
+description = "Test fixture: spins, traps or reads a file when told to."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen.workspace = true

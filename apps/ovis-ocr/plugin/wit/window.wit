@@ -1,0 +1,46 @@
+/// Windows and screens of this device. Points are measured from the
+/// top-left corner of the main display, y growing downward. Needs the
+/// Accessibility permission on macOS; without it calls answer `denied`.
+interface window {
+  use types.{call-error};
+
+  record rect {
+    x: s32,
+    y: s32,
+    width: u32,
+    height: u32,
+  }
+
+  record window-info {
+    /// Stable while the window exists.
+    id: u64,
+    app: string,
+    title: string,
+    frame: rect,
+  }
+
+  record screen {
+    id: u32,
+    frame: rect,
+    /// The frame without the menu bar and the Dock.
+    visible-frame: rect,
+    /// The screen with the menu bar.
+    main: bool,
+  }
+
+  /// Windows of the apps that show in the Dock.
+  %list: async func() -> result<list<window-info>, call-error>;
+  /// The focused window, if any.
+  focused: async func() -> result<option<window-info>, call-error>;
+  /// Raises the window and brings its app to the front.
+  focus: async func(id: u64) -> result<_, call-error>;
+  /// Moves and resizes the window.
+  set-frame: async func(id: u64, frame: rect) -> result<_, call-error>;
+  /// Closes the window, as its close button does. The app may ask to save
+  /// first.
+  close: async func(id: u64) -> result<_, call-error>;
+  /// Minimizes the window to the Dock, or restores it when `minimized` is
+  /// false.
+  set-minimized: async func(id: u64, minimized: bool) -> result<_, call-error>;
+  screens: async func() -> result<list<screen>, call-error>;
+}

@@ -1,0 +1,23 @@
+name = "wake-word"
+version = "0.1.0"
+description = "A hub tile whose switch has the wake-word sidecar listen for \"Codec\", which starts a voice agent call."
+# Standard library interfaces the component imports. `bricolo check` fails if
+# the component imports one that is not listed here.
+imports = ["log", "kv", "timer", "ui", "http"]
+# The built component, relative to this folder. Only `bricolo install` reads it.
+wasm = "target/wasm32-wasip2/release/wake_word.wasm"
+
+# The wake-word sidecar, which records from [mic] device in node.toml. Keep
+# it in step with `url` below. 127.0.0.1 and localhost are different entries.
+[http]
+allow = ["127.0.0.1:8803"]
+
+# Defaults passed to init as JSON. Override them in node.toml under
+# [plugins.wake-word].
+[settings]
+url = "http://127.0.0.1:8803"
+# How often the tile asks the sidecar for its status.
+poll_ms = 5000
+# Timeouts: /enable and /disable, and /status.
+timeout_ms = 5000
+status_timeout_ms = 3000

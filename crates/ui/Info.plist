@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Merged into bricolo.app's Info.plist by `cargo tauri build`.
+     crates/node/Info.plist carries the same usage strings for `bricolo`. -->
+<plist version="1.0">
+<dict>
+	<!-- An agent app: a menu bar item, no Dock icon. -->
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Plugins and scripts you install record from the microphone, for dictation and voice commands.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Plugins and scripts you install may use the camera.</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Plugins and scripts you install control other apps.</string>
+</dict>
+</plist>

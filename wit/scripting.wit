@@ -1,0 +1,21 @@
+/// Runs AppleScript, JavaScript for Automation and Shortcuts on macOS, and
+/// PowerShell on Windows (and wherever `pwsh` is installed). Always runs
+/// on this node. A script can do anything the user can, so it is as
+/// trusted as `shell`. On macOS each app a script drives asks the user
+/// once for Automation access. A script that runs longer than a minute
+/// is stopped and answers `timeout`.
+interface scripting {
+  use types.{call-error};
+
+  /// Runs an AppleScript and returns what it returns, as text.
+  run-applescript: async func(source: string) -> result<string, call-error>;
+  /// Runs JavaScript for Automation and returns its result, as text.
+  run-jxa: async func(source: string) -> result<string, call-error>;
+  /// The names of the user's shortcuts.
+  list-shortcuts: async func() -> result<list<string>, call-error>;
+  /// Runs a shortcut, with `input` as its text input, and returns its
+  /// output as text.
+  run-shortcut: async func(name: string, input: option<string>) -> result<string, call-error>;
+  /// Runs a PowerShell script and returns its output.
+  run-powershell: async func(source: string) -> result<string, call-error>;
+}

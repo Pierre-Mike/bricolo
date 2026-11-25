@@ -1,0 +1,33 @@
+[package]
+name = "bricolo-runtime"
+description = "Wasmtime embedding: checks, loads, runs and reloads WASM plugins."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+flate2.workspace = true
+notify.workspace = true
+bricolo-providers.workspace = true
+bricolo-router.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tar.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+toml.workspace = true
+tracing.workspace = true
+# GitHub releases for `bricolo install github:…`. The same TLS setup as the
+# `http` capability in bricolo-providers: rustls with ring, no OpenSSL.
+ureq = { version = "3", default-features = false, features = [
+    "rustls-no-provider",
+    "_ring",
+    "platform-verifier",
+] }
+wasmtime.workspace = true
+wasmtime-wasi.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

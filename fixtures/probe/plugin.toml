@@ -1,0 +1,6 @@
+# Test fixture. Tests write their own plugin.toml with the grants they need.
+name = "probe"
+version = "0.1.0"
+description = "Spins, traps or reads a file when a hotkey event tells it to."
+imports = ["log", "disk"]
+wasm = "../../target/wasm32-wasip2/release/probe.wasm"

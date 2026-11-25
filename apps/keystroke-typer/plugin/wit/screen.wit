@@ -1,0 +1,12 @@
+/// Pictures of this device's screens. Needs the Screen Recording
+/// permission on macOS; without it calls answer `denied`. Always runs on
+/// this node.
+interface screen {
+  use types.{call-error};
+  use window.{rect};
+
+  /// Saves a PNG of `area`, or of the whole main screen when none, in the
+  /// plugin's data folder, and returns its path. An empty area answers
+  /// `failed`.
+  capture: async func(area: option<rect>) -> result<string, call-error>;
+}

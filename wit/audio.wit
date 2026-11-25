@@ -1,0 +1,34 @@
+/// Plays sound files on this device's default output. Always runs on this
+/// node. A plugin may play several sounds at once and controls only its
+/// own; they stop when it stops or reloads.
+interface audio {
+  use types.{call-error};
+
+  record play-options {
+    /// 0 to 100; more counts as 100.
+    volume: u8,
+    /// Starts again from the beginning at the end, without a gap, until
+    /// `stop`.
+    looping: bool,
+  }
+
+  record sound {
+    id: u64,
+    path: string,
+    volume: u8,
+    looping: bool,
+  }
+
+  /// Starts playing the file at `path`: WAV, AIFF, MP3, AAC or M4A, and on
+  /// Linux whatever ffmpeg reads. Windows has no backend yet and answers
+  /// `unavailable`. The path must be readable under one of
+  /// the plugin's `disk:` grants or in its data folder. Returns the
+  /// sound's id.
+  play: async func(path: string, options: play-options) -> result<u64, call-error>;
+  /// Changes the volume of a sound that is playing.
+  set-volume: async func(id: u64, volume: u8) -> result<_, call-error>;
+  /// Stops a sound. Stopping one that has ended does nothing.
+  stop: async func(id: u64) -> result<_, call-error>;
+  /// The caller's sounds that are still playing.
+  sounds: async func() -> result<list<sound>, call-error>;
+}

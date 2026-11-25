@@ -1,0 +1,7 @@
+name = "window-tiler"
+version = "0.1.0"
+description = "Tiles the focused window: cmd+alt+left and right for halves, cmd+alt+up to fill."
+# Standard library interfaces the component imports.
+imports = ["log", "hotkey", "window"]
+# The built component, relative to this folder. Only used by `bricolo install`.
+wasm = "../../target/wasm32-wasip2/release/window_tiler.wasm"

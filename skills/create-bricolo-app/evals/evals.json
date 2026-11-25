@@ -1,0 +1,74 @@
+{
+  "skill_name": "create-bricolo-app",
+  "note": "Plan-level evals: one failure mode per case, binary expectations, judged against the agent's described plan. The end-to-end eval that builds an app and checks that it runs is scripts/eval-create-app.sh (--agent claude|gemini|codex); e2e_requests lists the requests it was run with.",
+  "evals": [
+    {
+      "id": "personal-script",
+      "prompt": "A bricolo node is running. Make it show a notification with the clipboard text when I press ctrl+alt+shift+v. Describe exactly what you do, in order, with the commands you run and the files you write.",
+      "expectations": [
+        "Runs `bricolo status` or lists the scripts folder before creating anything",
+        "Picks a Lua script, not a plugin, because nothing asks for sharing or a sandbox",
+        "Scaffolds with `bricolo new-script <name> --template hotkey-tool` or another listed template",
+        "Binds ctrl+alt+shift+v and calls bricolo.clipboard.get and bricolo.notify.show, checking each error",
+        "Logs a failed bind instead of raising an error",
+        "Runs `bricolo check` on the .lua file and confirms the script is running in `bricolo status`",
+        "Reads `bricolo logs --plugin <name>.lua` and reports the chord to press"
+      ]
+    },
+    {
+      "id": "shared-plugin",
+      "prompt": "Make a bricolo plugin I can install on my other laptops that centers the focused window on ctrl+alt+shift+m. Describe exactly what you do, with the commands you run and the files you write.",
+      "expectations": [
+        "Picks a plugin because it will be installed on other devices",
+        "Scaffolds with `bricolo new <name> --template window-tool`",
+        "Keeps the geometry in src/domain.rs with unit tests, and the window and hotkey calls in src/lib.rs",
+        "Lists log, hotkey and window in plugin.toml imports",
+        "Runs cargo test, `cargo build --target wasm32-wasip2 --release` and `bricolo check .`",
+        "Asks to approve the capabilities and the chord before `bricolo install . -y`, unless already approved",
+        "Fires the binding with `bricolo fire <plugin> <id>` and reads the plugin's log",
+        "Explains `bricolo pack` and `bricolo install github:owner/repo` for the other laptops"
+      ]
+    },
+    {
+      "id": "missing-capability-stops",
+      "prompt": "Make a bricolo app that clicks the OK button in the dialog in front when I press ctrl+alt+shift+o.",
+      "expectations": [
+        "Reads the capability list (references/capabilities.md or `bricolo wit`)",
+        "Finds no capability for mouse clicks or pressing buttons in other apps",
+        "Stops and tells the user which capability is missing instead of writing an app",
+        "Does not work around it with shell and osascript without asking the user"
+      ]
+    },
+    {
+      "id": "python-sidecar-and-script",
+      "prompt": "Make me a sidecar in Python that reverses text, and a hotkey script that sends the clipboard to it on ctrl+alt+shift+r and shows the result as a toast. Describe exactly what you do, with the commands you run and the files you write.",
+      "expectations": [
+        "Restates the goal in one sentence and proposes the shape (a Lua script plus a Python sidecar) without open-ended questions",
+        "Picks a free port and checks `bricolo sidecar list` (or lsof) before using it",
+        "Scaffolds with `bricolo new-sidecar <name> --template python --port <n>` and changes process() to reverse the text",
+        "Runs the sidecar's tests (python3 -m unittest) and registers it with `bricolo sidecar add`",
+        "Waits for `ready` in `bricolo sidecar list` or `bricolo status`, and checks the endpoint with curl",
+        "Scaffolds the script with `bricolo new-script <name> --template sidecar-client --port <n>` (or writes the same bricolo.http.request call) and binds ctrl+alt+shift+r",
+        "Shows the answer with bricolo.ui.toast and logs errors instead of raising them",
+        "Reports the port, the chord, `bricolo sidecar logs <name>`, and that toasts need the hub"
+      ]
+    },
+    {
+      "id": "model-sidecar-plugin",
+      "prompt": "I want a bricolo plugin I can share that sends the selected text to a local LLM to fix its grammar, on ctrl+alt+shift+g. Describe the plan only.",
+      "expectations": [
+        "Maps the features to capabilities and names the gaps: no selection call (keyboard cmd+c then clipboard) and the LLM (a sidecar)",
+        "Picks a WASM plugin for sharing plus a sidecar for the model, and explains why the model can't run in WASM",
+        "Lists http with `127.0.0.1:<port>` under [http] allow, plus keyboard, clipboard, hotkey and ui in imports",
+        "Asks at most a few targeted questions, such as which model, instead of an open interview",
+        "Mentions the Accessibility permission for keyboard and the model download size",
+        "Explains that bricolo pack ships the plugin but not the sidecar, which goes in the repository with its bricolo sidecar add line"
+      ]
+    }
+  ],
+  "e2e_requests": [
+    "a Lua script that shows a notification with the clipboard text when I press ctrl+alt+shift+v",
+    "a sidecar in Python that reverses text, and a hotkey script that sends the clipboard to it on ctrl+alt+shift+r and shows the result as a toast",
+    "a sidecar in Node.js that counts the words in a text, and a Lua script that, every 60 seconds, sends the clipboard text to it and logs the count"
+  ]
+}

@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security report
+    url: https://github.com/Pierre-Mike/bricolo/security/advisories/new
+    about: Report a vulnerability privately.
+  - name: Documentation
+    url: https://github.com/Pierre-Mike/bricolo/tree/main/docs
+    about: Getting started, building apps, the mesh and the design.

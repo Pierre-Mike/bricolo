@@ -1,0 +1,667 @@
+#!/usr/bin/env python3
+# Warm speech-to-text server: ONE model, loaded once, shared by every caller
+# (apps/dictation and the pipecat voice agent both POST to it).
+#
+# The file keeps its historical name because callers point at it by path, but it
+# serves any model the dictation menu offers. Which backend runs is chosen at
+# launch, and the launcher must start it under the matching interpreter:
+#
+#   STT_ENGINE=parakeet  parakeet-mlx's python   STT_MODEL=<snapshot dir>
+#   STT_ENGINE=mlxa      mlx-audio's python      STT_MODEL=<HF repo id or dir>
+#   STT_ENGINE=cactus    cactus-needle's python  STT_MODEL=<path to a .cact file>
+#
+# The cactus engine runs Cactus Compute's Whistle on the CPU — no MLX, no Metal,
+# no GPU. Its interpreter has no mlx package at all, so every MLX call in this
+# file is behind _mlx(), which hands back a do-nothing stand-in when the import
+# is not there. Nothing else in the file needs to know which engine it is under.
+#
+# STT_MODEL_ID is the name /health reports (defaults to STT_MODEL); STT_PORT
+# overrides the port. PARAKEET_MODEL_PATH / PARAKEET_PORT / argv[1] still work, so
+# an old launcher keeps getting a parakeet server.
+#
+#   POST /transcribe      body=<wav path>  -> batch transcription (text back)
+#   POST /words           body=<wav path>  -> JSON: text, and each word with its
+#                                             score and the alternatives the model
+#                                             nearly wrote (parakeet only)
+#   POST /start           body=<raw path>  -> stream a growing headerless
+#                                             s16le/16k mono PCM file as it records
+#   POST /finish                            -> drain remaining audio, return text
+#   POST /cancel                            -> abort the current session
+#   GET  /partial                           -> live hypothesis of the stream
+#   GET  /health                            -> JSON: engine, model, ready, streams
+#
+# Live dictation (parakeet only), which types at the cursor WHILE you speak:
+#
+#   POST /dictate/start   body=<raw path>  -> same growing PCM file
+#   GET  /dictate/poll                      -> JSON: audio_s, text, stable, …
+#   POST /dictate/finish                    -> JSON: text (final), stable
+#   POST /dictate/cancel                    -> abort
+#
+# `stable` is the prefix that is safe to put at the cursor; `text` is the live
+# hypothesis, which is not. The rule that separates them lives in
+# dictate/, the package next to this file, so the commit logic has specs of its
+# own instead of hiding in this file.
+#
+# Errors come back as a non-200 status with a body starting "__ERROR__". Only the
+# parakeet engine streams: on an mlx-audio model /start and /finish fail at once,
+# so dictation falls back to /transcribe.
+#
+# All MLX work runs on ONE dedicated worker thread (model loaded there too):
+# MLX's Metal stream is thread-bound. The HTTP server threads only hand the
+# worker Session objects and signal them via events.
+#
+# A new /start preempts (aborts) any in-flight stream, so an orphaned session can
+# never leak a stale transcript into a later /finish. Batch jobs queue instead of
+# preempting; while a stream is live the worker serves them between feeds, so a
+# voice-agent turn never waits for a dictation to end.
+import json
+import os
+import sys
+import threading
+import time
+from collections import deque
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+ENGINE = os.environ.get("STT_ENGINE", "parakeet")
+MODEL = (os.environ.get("STT_MODEL") or os.environ.get("PARAKEET_MODEL_PATH")
+         or (sys.argv[1] if len(sys.argv) > 1 else None))
+MODEL_ID = os.environ.get("STT_MODEL_ID") or MODEL
+HOST = "127.0.0.1"
+PORT = int(os.environ.get("STT_PORT") or os.environ.get("PARAKEET_PORT", "8765"))
+STREAMS = ENGINE == "parakeet"
+# mlx-audio only. Empty = each model's own default (Whisper detects the language
+# per take); a code such as "fr" pins it.
+LANGUAGE = os.environ.get("STT_LANGUAGE", "").strip()
+
+SR = 16000
+BLOCK = SR          # 1.0s feed blocks: smaller first chunks drop the leading word
+CONTEXT = (256, 256)
+DEPTH = 2
+
+# ── Live dictation ──────────────────────────────────────────────────────────
+# The commit rule is the dictate/ package beside this file: pure, specced, and
+# testable without a model. Running this file as a script puts its directory on
+# sys.path. The import is allowed to fail: dictation reads `dictate: false` off
+# /health and falls back to transcribing on release.
+# Seconds a word must sit back from the end of the audio before it is typed,
+# the lowest token confidence it may carry, and how often a pass is attempted.
+DICTATE_MARGIN_S = float(os.environ.get("DICTATE_MARGIN_S", "1.2"))
+DICTATE_CONFIDENCE = float(os.environ.get("DICTATE_CONFIDENCE", "0.80"))
+DICTATE_INTERVAL_S = float(os.environ.get("DICTATE_INTERVAL_S", "0.4"))
+
+_dictate_why = "parakeet only" if ENGINE != "parakeet" else "not imported"
+DICTATE = False
+if ENGINE == "parakeet":
+    try:
+        from dictate import (  # noqa: E402
+            StreamingTranscriber,
+            Token,
+            pcm_to_float32,
+        )
+        from dictate import alternatives  # noqa: E402
+        DICTATE = True
+    except Exception as e:  # noqa: BLE001
+        _dictate_why = f"{type(e).__name__}: {e}"
+
+if ENGINE not in ("parakeet", "mlxa", "cactus") or not MODEL:
+    sys.exit(f"usage: STT_ENGINE=parakeet|mlxa|cactus STT_MODEL=<path or repo> {sys.argv[0]}")
+
+
+def log(msg):
+    print(f"[stt-server:{ENGINE}] {msg}", flush=True)
+
+
+class _NoMLX:
+    """Stand-in for mlx.core on an engine whose interpreter has no MLX.
+
+    Only the memory calls reach it: a CPU engine has no Metal buffer cache to
+    bound, clear or measure, so capping it is a no-op and every gauge reads 0.
+    Anything else is a bug in this file, and raises rather than quietly passing.
+    """
+
+    @staticmethod
+    def set_cache_limit(_n):
+        return 0
+
+    @staticmethod
+    def clear_cache():
+        return None
+
+    @staticmethod
+    def get_active_memory():
+        return 0
+
+    get_cache_memory = get_active_memory
+    get_peak_memory = get_active_memory
+
+
+def _mlx():
+    """mlx.core, or _NoMLX on the cactus engine. Call from the thread using it."""
+    try:
+        import mlx.core as mx
+        return mx
+    except ImportError:
+        return _NoMLX
+
+
+class Session:
+    def __init__(self, kind, path):
+        self.kind = kind          # 'stream' | 'batch' | 'words' | 'dictate'
+        self.path = path
+        self.abort = threading.Event()
+        self.finish = threading.Event()
+        self.done = threading.Event()
+        self.text = None
+        self.partial = ""        # latest live hypothesis, polled via GET /partial
+        # 'dictate' only: the StreamingTranscriber, so /dictate/poll can read
+        # its snapshot from an HTTP thread while the worker runs passes.
+        self.dictator = None
+
+
+_lock = threading.Lock()
+_wake = threading.Event()
+_current = {"sess": None}   # the live session (what /finish, /cancel act on)
+_queue = deque()            # sessions waiting for the worker, oldest first
+# What /health reports. `error` is set when the model failed to load, after which
+# every request is answered with it instead of hanging until its timeout.
+_state = {"ready": False, "error": None, "load_s": None}
+
+
+def _new_session(kind, path):
+    s = Session(kind, path)
+    with _lock:
+        if _state["error"]:
+            s.text = f"__ERROR__ model failed to load: {_state['error']}"
+            s.done.set()
+            return s
+        if kind in ("stream", "dictate"):
+            prev = _current["sess"]
+            if prev is not None and not prev.done.is_set():
+                prev.abort.set()    # preempt any in-flight capture
+            _current["sess"] = s
+        _queue.append(s)
+    _wake.set()
+    return s
+
+
+def _next_batch():
+    """Pop the oldest queued batch job, leaving any stream sessions in place."""
+    with _lock:
+        for s in _queue:
+            if s.kind in ("batch", "words"):
+                _queue.remove(s)
+                return s
+    return None
+
+
+def _run_batch(backend, s):
+    try:
+        if s.kind == "words":
+            s.text = json.dumps(backend.words(s.path))
+        else:
+            s.text = backend.transcribe(s.path)
+    except Exception as e:  # noqa: BLE001
+        log(f"batch error: {e}")
+        s.text = f"__ERROR__ {e}"
+    s.done.set()
+
+
+def _read_pcm(fh, leftover):
+    import numpy as np
+    import mlx.core as mx
+    data = leftover + fh.read()
+    usable = len(data) - (len(data) % 2)   # whole int16 samples only
+    if usable == 0:
+        return None, data
+    samples = np.frombuffer(data[:usable], dtype=np.int16).astype(np.float32) / 32768.0
+    return mx.array(samples), data[usable:]
+
+
+def _feed(st, pending, arr):
+    """Append arr to pending; feed full BLOCK pieces, return the remainder array."""
+    import mlx.core as mx
+    buf = arr if pending is None else mx.concatenate([pending, arr])
+    n, off = buf.shape[0], 0
+    while n - off >= BLOCK:
+        st.add_audio(buf[off:off + BLOCK])
+        off += BLOCK
+    return buf[off:]
+
+
+def _run_stream(backend, s):
+    model = backend.model
+    for _ in range(50):                     # wait for ffmpeg to create the file
+        if os.path.exists(s.path):
+            break
+        time.sleep(0.02)
+    t0, feeds, leftover, pending = time.time(), 0, b"", None
+    with model.transcribe_stream(context_size=CONTEXT, depth=DEPTH) as st, \
+            open(s.path, "rb") as fh:
+        while not s.finish.is_set() and not s.abort.is_set():
+            b = _next_batch()
+            if b is not None:               # a voice-agent turn mid-dictation
+                _run_batch(backend, b)
+                continue
+            arr, leftover = _read_pcm(fh, leftover)
+            if arr is not None:
+                pending = _feed(st, pending, arr); feeds += 1
+                s.partial = (st.result.text or "").strip()   # live preview
+            else:
+                time.sleep(0.03)
+        if s.abort.is_set():
+            log("stream aborted"); s.done.set(); return
+        # /finish: ffmpeg got SIGTERM (runs with -flush_packets 1, so the file
+        # is nearly current). Short grace to catch its last bytes, then drain.
+        deadline = time.time() + 0.12
+        while time.time() < deadline:
+            arr, leftover = _read_pcm(fh, leftover)
+            if arr is not None:
+                pending = _feed(st, pending, arr)
+                deadline = time.time() + 0.05
+            else:
+                time.sleep(0.015)
+        if pending is not None and pending.shape[0] > 0:
+            st.add_audio(pending)
+        s.text = (st.result.text or "").strip()
+    log(f"stream done: feeds={feeds} {len(s.text)} chars in {time.time()-t0:.2f}s")
+    s.done.set()
+
+
+def _read_bytes(fh, leftover):
+    """Whole int16 samples read so far, plus any half-sample tail to carry on."""
+    data = leftover + fh.read()
+    usable = len(data) - (len(data) % 2)
+    return data[:usable], data[usable:]
+
+
+def _dictator(backend):
+    """A StreamingTranscriber wired to this process's warm parakeet model.
+
+    `generate` is handed a mel computed straight from the sample buffer, so a
+    pass costs inference and nothing else: no temp WAV, no re-read from disk.
+    Measured on parakeet-tdt-0.6b-v2, roughly 10ms per second of audio on top of
+    a 30ms floor.
+    """
+    import mlx.core as mx
+    from parakeet_mlx.audio import get_logmel
+    model = backend.model
+    pc = model.preprocessor_config
+
+    def transcribe(samples):
+        mel = get_logmel(mx.array(samples), pc)
+        result = model.generate(mel)[0]
+        return [Token(t.text, t.start, t.end, float(t.confidence))
+                for t in result.tokens]
+
+    return StreamingTranscriber(
+        transcribe,
+        margin_s=DICTATE_MARGIN_S,
+        confidence_floor=DICTATE_CONFIDENCE,
+        interval_s=DICTATE_INTERVAL_S,
+    )
+
+
+def _run_dictate(backend, s):
+    """Live dictation: tail the growing PCM file, re-transcribe, publish.
+
+    The same loop as _run_stream — including serving a voice-agent batch job
+    between passes, so a turn never waits for a dictation to end — but the model
+    is the ordinary batch one, run again over everything heard so far.
+    """
+    st = _dictator(backend)
+    s.dictator = st
+    for _ in range(50):                     # wait for ffmpeg to create the file
+        if os.path.exists(s.path):
+            break
+        time.sleep(0.02)
+    t0, leftover = time.time(), b""
+    with open(s.path, "rb") as fh:
+        while not s.finish.is_set() and not s.abort.is_set():
+            b = _next_batch()
+            if b is not None:               # a voice-agent turn mid-dictation
+                _run_batch(backend, b)
+                continue
+            chunk, leftover = _read_bytes(fh, leftover)
+            if chunk:
+                st.feed(pcm_to_float32(chunk))
+            if st.due():
+                st.step()
+                s.partial = st.text
+            else:
+                time.sleep(0.02)
+        if s.abort.is_set():
+            log("dictate aborted"); s.done.set(); return
+        # /dictate/finish: ffmpeg got SIGTERM and runs with -flush_packets 1, so
+        # the file is nearly current. Short grace to catch its last bytes.
+        deadline = time.time() + 0.12
+        while time.time() < deadline:
+            chunk, leftover = _read_bytes(fh, leftover)
+            if chunk:
+                st.feed(pcm_to_float32(chunk))
+                deadline = time.time() + 0.05
+            else:
+                time.sleep(0.015)
+    s.text = st.finish()
+    s.partial = st.text
+    if st.contradicted:
+        log(f"dictate contradiction: {st.contradiction}")
+    snap = st.snapshot()
+    pct = (100 * len(st.stable) / len(s.text)) if s.text else 0
+    log(f"dictate done: {snap.audio_s:.1f}s audio, {snap.passes} passes, "
+        f"{len(st.stable)}/{len(s.text)} chars typed live ({pct:.0f}%) "
+        f"in {time.time() - t0:.2f}s")
+    s.done.set()
+
+
+class ParakeetBackend:
+    def __init__(self, path):
+        from parakeet_mlx import from_pretrained
+        self.model = from_pretrained(path)
+
+    def transcribe(self, wav):
+        return (self.model.transcribe(wav).text or "").strip()
+
+    def words(self, wav):
+        """The whole take decoded once, with what else the model heard at each
+        word it was unsure of (dictate/alternatives.py), as the /words JSON."""
+        import mlx.core as mx
+        from parakeet_mlx import tokenizer
+        from parakeet_mlx.audio import get_logmel, load_audio
+        model = self.model
+        if not hasattr(model, "durations"):
+            raise RuntimeError("word alternatives need a TDT model")
+        mel = get_logmel(load_audio(wav, model.preprocessor_config.sample_rate),
+                         model.preprocessor_config)
+        features, lengths = model.encoder(mel if mel.ndim == 3 else mx.expand_dims(mel, 0))
+        mx.eval(features, lengths)
+        vocab = len(model.vocabulary)
+
+        def step(frame, last, state):
+            dec, (h, c) = model.decoder(mx.array([[last]]) if last is not None else None, state)
+            joint = model.joint(features[:, frame:frame + 1], dec.astype(features.dtype))
+            probs = mx.softmax(joint[0, 0, 0, :vocab + 1], -1)
+            best = mx.argsort(-probs)[:6]
+            top = list(zip(best.tolist(), probs[best].tolist()))
+            advance = model.durations[int(mx.argmax(joint[0, 0, 0, vocab + 1:]))]
+            return top, advance, (h.astype(features.dtype), c.astype(features.dtype))
+
+        return alternatives.transcribe(alternatives.Model(
+            step=step, frames=int(lengths[0]), blank=vocab,
+            text=lambda t: tokenizer.decode([t], model.vocabulary),
+            max_symbols=model.max_symbols))
+
+
+def decode_kwargs(defaults, params, language=""):
+    """generate() kwargs for one mlx-audio model.
+
+    Starts from the batch CLI's defaults, filtered to what this model's
+    generate() names, as generate_transcription does. Two departures:
+      - language: the CLI forces "en", which makes Whisper decode French as
+        English. Unpinned, it is left out so the model's own default applies
+        (Whisper: detect per take). Pinned, it is passed through.
+      - condition_on_previous_text=False where accepted: conditioning on its own
+        output is what sends Whisper into repeating a sentence on trailing
+        silence.
+    """
+    kw = {k: v for k, v in defaults.items()
+          if k in params and k not in ("audio", "verbose", "stream", "language")}
+    if language and "language" in params:
+        kw["language"] = language
+    if "condition_on_previous_text" in params:
+        kw["condition_on_previous_text"] = False
+    return kw
+
+
+class MlxAudioBackend:
+    """Any mlx-audio STT architecture, called the way its batch CLI calls it."""
+
+    def __init__(self, repo):
+        import inspect
+        import mlx.core as mx
+        from mlx_audio.stt.generate import parse_args
+        from mlx_audio.stt.utils import load_model
+        self.model = load_model(repo)
+        defaults = vars(parse_args(["--audio", "-", "--output-path", "-"]))
+        params = inspect.signature(self.model.generate).parameters
+        self.kwargs = decode_kwargs(defaults, params, LANGUAGE)
+        log(f"decode kwargs: {sorted(k for k in self.kwargs if k != 'generation_stream')} "
+            f"language={self.kwargs.get('language', 'model default')}")
+        if "generation_stream" in params:
+            # Created on this (the worker) thread, which owns the MLX stream.
+            self.kwargs["generation_stream"] = mx.new_stream(mx.default_device())
+
+    def transcribe(self, wav):
+        out = self.model.generate(wav, verbose=False, **self.kwargs)
+        return (getattr(out, "text", "") or "").strip()
+
+
+class CactusBackend:
+    """Cactus Compute's Whistle: one 16.9 MB .cact file, decoded on the CPU.
+
+    The weights file is the whole model — no config, no tokenizer, no snapshot
+    directory — so MODEL is a path to it rather than a repo id.
+
+    Two habits of this engine the rest of the pipeline relies on:
+      - silence comes back as an empty string, not an invented sentence, so a
+        take with no speech types nothing instead of a hallucinated line
+      - one pass covers 30s and longer audio is windowed internally, so the
+        90s MAX_RECORD in apps/dictation needs no special case here
+
+    It detects the language per take across its seven (en, de, fr, es, it, nl,
+    pl). STT_LANGUAGE pins it the same way it pins an mlx-audio model, and an
+    unsupported code is ignored rather than fatal — a pin meant for a 99-language
+    Whisper should not leave this engine unable to start.
+    """
+
+    LANGUAGES = ("en", "de", "fr", "es", "it", "nl", "pl")
+
+    def __init__(self, weights):
+        import needle
+        self.language = LANGUAGE if LANGUAGE in self.LANGUAGES else None
+        if LANGUAGE and not self.language:
+            log(f"language {LANGUAGE!r} is not one of {'/'.join(self.LANGUAGES)} — detecting instead")
+        self.model = needle.Whistle(weights=weights)
+
+    def transcribe(self, wav):
+        out = self.model.transcribe(wav, language=self.language)
+        return ((out or {}).get("text") or "").strip()
+
+
+def worker():
+    mx = _mlx()  # (worker thread must own the MLX stream)
+    # Bound MLX's Metal buffer cache. Left unbounded it grows across streaming
+    # sessions (measured: 3.7GB cache on top of 1.2GB weights, 11GB peak) and
+    # drives the system into paging. 512MB keeps buffer reuse fast while capping
+    # the idle footprint to roughly the resident model weights.
+    mx.set_cache_limit(512 * 1024 * 1024)
+    MB = 1024 * 1024
+
+    def memlog(tag):
+        log(f"mem[{tag}] active={mx.get_active_memory() / MB:.0f}MB "
+            f"cache={mx.get_cache_memory() / MB:.0f}MB "
+            f"peak={mx.get_peak_memory() / MB:.0f}MB")
+
+    log(f"loading model: {MODEL}")
+    t0 = time.time()
+    try:
+        backend = {"parakeet": ParakeetBackend,
+                   "mlxa": MlxAudioBackend,
+                   "cactus": CactusBackend}[ENGINE](MODEL)
+    except Exception as e:  # noqa: BLE001
+        log(f"model load FAILED: {e}")
+        with _lock:
+            _state["error"] = str(e)
+            waiting = list(_queue); _queue.clear()
+        for s in waiting:
+            s.text = f"__ERROR__ model failed to load: {e}"; s.done.set()
+        return
+    log(f"model loaded in {time.time() - t0:.2f}s")
+    try:
+        import numpy as np
+        import wave
+        warm = "/tmp/hs-parakeet-warm.wav"
+        if not os.path.exists(warm):
+            with wave.open(warm, "w") as w:
+                w.setnchannels(1); w.setsampwidth(2); w.setframerate(SR)
+                w.writeframes(np.zeros(SR, dtype=np.int16).tobytes())
+        tw = time.time(); backend.transcribe(warm)
+        log(f"warmup inference {time.time() - tw:.2f}s")
+    except Exception as e:  # noqa: BLE001
+        log(f"warmup skipped: {e}")
+    mx.clear_cache()
+    _state["load_s"] = round(time.time() - t0, 2)
+    _state["ready"] = True
+    memlog("ready")
+    log("worker ready")
+    while True:
+        _wake.wait(); _wake.clear()
+        while True:
+            with _lock:
+                s = _queue.popleft() if _queue else None
+            if s is None:
+                break
+            if s.abort.is_set():
+                s.done.set(); continue
+            try:
+                if s.kind in ("batch", "words"):
+                    _run_batch(backend, s)
+                elif s.kind == "dictate":
+                    _run_dictate(backend, s)
+                else:
+                    _run_stream(backend, s)
+            except Exception as e:  # noqa: BLE001
+                log(f"{s.kind} error: {e}")
+                s.text = f"__ERROR__ {e}"; s.done.set()
+            # Idle now: hand cached Metal scratch buffers back to the OS so the
+            # resident footprint between dictations stays at the model's weights.
+            mx.clear_cache()
+
+
+class Handler(BaseHTTPRequestHandler):
+    def log_message(self, *_):
+        pass
+
+    def _body(self):
+        n = int(self.headers.get("Content-Length", 0))
+        return self.rfile.read(n).decode("utf-8").strip() if n else ""
+
+    def _reply(self, code, text, ctype="text/plain"):
+        b = text.encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", f"{ctype}; charset=utf-8")
+        self.send_header("Content-Length", str(len(b)))
+        self.end_headers()
+        self.wfile.write(b)
+
+    def _dictate(self, verb, body):
+        """The live-dictation verbs. 501 when this model cannot drive them, so
+        apps/dictation falls back to transcribing on release."""
+        if not DICTATE:
+            self._reply(501, f"__ERROR__ no live dictation on {MODEL_ID} "
+                             f"({_dictate_why})")
+            return
+        if verb == "start":
+            _new_session("dictate", body)
+            self._reply(200, "started")
+            return
+        with _lock:
+            s = _current["sess"]
+        if verb == "cancel":
+            if s is not None:
+                s.abort.set()
+            self._reply(200, "cancelled")
+            return
+        if verb != "finish":
+            self._reply(404, "no")
+            return
+        if s is None or s.kind != "dictate":
+            self._reply(500, "__ERROR__ no dictation session")
+            return
+        s.finish.set()
+        if not s.done.wait(timeout=30):
+            self._reply(500, "__ERROR__ timeout")
+            return
+        text = s.text or ""
+        if text.startswith("__ERROR__"):
+            self._reply(500, text)
+            return
+        st = s.dictator
+        self._reply(200, json.dumps({
+            "text": text,
+            # What the user already has at the cursor, so the caller can see
+            # what is left to type without trusting its own last poll.
+            "stable": st.stable if st else "",
+            "contradicted": bool(st and st.contradicted),
+        }), "application/json")
+
+    def do_POST(self):
+        body = self._body()
+        if self.path.startswith("/dictate/"):
+            self._dictate(self.path[len("/dictate/"):], body)
+        elif self.path in ("/start", "/finish") and not STREAMS:
+            # Fail fast: dictation treats any non-200 here as "use /transcribe".
+            self._reply(501, f"__ERROR__ {MODEL_ID} does not stream; use /transcribe")
+        elif self.path == "/start":
+            _new_session("stream", body); self._reply(200, "started")
+        elif self.path == "/finish":
+            with _lock:
+                s = _current["sess"]
+            if s is None:
+                self._reply(500, "__ERROR__ no session"); return
+            s.finish.set()
+            if s.done.wait(timeout=30):
+                t = s.text or ""
+                self._reply(200 if not t.startswith("__ERROR__") else 500, t)
+            else:
+                self._reply(500, "__ERROR__ timeout")
+        elif self.path == "/cancel":
+            with _lock:
+                s = _current["sess"]
+            if s is not None:
+                s.abort.set()
+            self._reply(200, "cancelled")
+        elif self.path == "/words" and not DICTATE:
+            self._reply(501, f"__ERROR__ no word alternatives on {MODEL_ID} ({_dictate_why})")
+        elif self.path in ("/transcribe", "/words"):
+            s = _new_session("batch" if self.path == "/transcribe" else "words", body)
+            if s.done.wait(timeout=60):
+                t = s.text or ""
+                self._reply(200 if not t.startswith("__ERROR__") else 500, t)
+            else:
+                self._reply(500, "__ERROR__ timeout")
+        else:
+            self._reply(404, "no")
+
+    def do_GET(self):
+        if self.path == "/dictate/poll":
+            with _lock:
+                s = _current["sess"]
+            live = s is not None and s.kind == "dictate" and not s.done.is_set()
+            st = s.dictator if live else None
+            snap = (st.snapshot().as_dict() if st is not None else
+                    {"audio_s": 0.0, "text": "", "stable": "",
+                     "contradicted": False, "passes": 0, "pass_ms": 0})
+            self._reply(200, json.dumps(snap), "application/json")
+        elif self.path == "/partial":
+            with _lock:
+                s = _current["sess"]
+            txt = s.partial if (s is not None and not s.done.is_set()) else ""
+            self._reply(200, txt)
+        elif self.path == "/health":
+            self._reply(200, json.dumps({
+                "engine": ENGINE, "model": MODEL_ID, "path": MODEL,
+                "streams": STREAMS, "ready": _state["ready"],
+                "error": _state["error"], "load_s": _state["load_s"],
+                "pid": os.getpid(),
+                "dictate": DICTATE, "dictate_why": None if DICTATE else _dictate_why,
+                "dictate_margin_s": DICTATE_MARGIN_S,
+                "dictate_confidence": DICTATE_CONFIDENCE,
+                "dictate_interval_s": DICTATE_INTERVAL_S,
+            }), "application/json")
+        else:
+            self._reply(200, "ok")
+
+
+threading.Thread(target=worker, daemon=True).start()
+log(f"listening on http://{HOST}:{PORT} ({MODEL_ID})")
+ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()

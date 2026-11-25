@@ -1,0 +1,117 @@
+[package]
+name = "bricolo-providers"
+description = "One trait per capability, with the local implementations."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+toml.workspace = true
+tracing.workspace = true
+notify.workspace = true
+# Blocking HTTP client for the `http` capability and the sidecars, run on
+# Tokio's blocking pool. rustls with ring and the OS certificate store: no
+# OpenSSL, so the Linux cross-check needs only zig.
+ureq = { version = "3", default-features = false, features = [
+    "rustls-no-provider",
+    "_ring",
+    "platform-verifier",
+] }
+
+# Images and copied files on the clipboard, on every system (text stays
+# with each system's own backend). PNG and JPEG for `clipboard.set-image`.
+arboard = { version = "3", default-features = false, features = ["image-data"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+png = "0.18"
+# The process table for `process`, on every system.
+sysinfo = { version = "0.40", default-features = false, features = ["system", "user"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# Keychain for `secrets`.
+security-framework = "3"
+global-hotkey = "0.10"
+tao = "0.37"
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSGeometry", "NSArray", "NSString", "NSURL", "NSError", "NSNotification", "NSOperation", "NSDictionary", "NSDistributedNotificationCenter", "NSObject", "block2"] }
+block2 = "0.6"
+objc2-app-kit = { version = "0.3", features = ["NSScreen", "NSPasteboard", "NSWorkspace", "NSRunningApplication", "NSApplication"] }
+objc2-core-foundation = { version = "0.3", features = ["CFString", "CFArray", "CFNumber", "CFDictionary", "CFCGTypes", "CFMachPort", "CFRunLoop", "CFURL"] }
+objc2-application-services = { version = "0.3", features = ["HIServices", "AXUIElement", "AXValue", "AXError", "AXAttributeConstants", "libc"] }
+# Sound files for `audio`.
+objc2-avf-audio = { version = "0.3", default-features = false, features = ["std", "AVAudioPlayer"] }
+# Key events for `keyboard`.
+objc2-core-graphics = { version = "0.3", default-features = false, features = ["std", "libc", "CGEvent", "CGEventTypes", "CGRemoteOperation", "CGWindow"] }
+# Microphone and Camera grants, for the hub's Library view.
+objc2-av-foundation = { version = "0.3", default-features = false, features = ["std", "block2", "AVCaptureDevice", "AVMediaFormat"] }
+
+# Linux: X11 through x11rb's pure-Rust connection (windows, screens through
+# RandR, hotkeys through key grabs, `keyboard` through XTEST), the clipboard
+# through arboard (X11, or Wayland's data-control protocol), notifications
+# over D-Bus with zbus. All pure Rust: no libX11, libdbus or libwayland at
+# build time.
+[target.'cfg(target_os = "linux")'.dependencies]
+x11rb = { version = "0.13", features = ["randr", "xtest", "screensaver"] }
+arboard = { version = "3", default-features = false, features = ["wayland-data-control"] }
+zbus = { version = "6", default-features = false, features = ["tokio"] }
+# Streams of logind signals for `system.watch`.
+futures-util.workspace = true
+
+# Windows: Win32 through Microsoft's `windows` crate. One group of features
+# per backend; add a feature to the group of the module that needs it.
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.62", features = [
+    # Shared
+    "Win32_Foundation",
+    # Node plumbing: sidecar and ffmpeg process trees (job objects,
+    # Ctrl+Break to a console process group), windows/process.rs
+    "Win32_Security",
+    "Win32_System_Console",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+    # window and app: the window list, DWM frames, monitors, DPI awareness,
+    # process names, launching (ShellExecuteW, App Paths), app.watch
+    "Win32_Graphics_Dwm",
+    "Win32_Graphics_Gdi",
+    "Win32_System_Registry",
+    "Win32_UI_Accessibility",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+    # keyboard, mouse and hotkey: SendInput, RegisterHotKey
+    "Win32_UI_Input_KeyboardAndMouse",
+    # notify: WinRT toasts, and the AppUserModelID key (Win32_System_Registry)
+    "Data_Xml_Dom",
+    "UI_Notifications",
+    # secrets: the Credential Manager
+    "Win32_Security_Credentials",
+    # system: idle (GetLastInputInfo, GetTickCount), power and keep-awake,
+    # the watch window (WindowsAndMessaging, LibraryLoader) and lock events
+    "Win32_System_LibraryLoader",
+    "Win32_System_Power",
+    "Win32_System_RemoteDesktop",
+    "Win32_System_SystemInformation",
+    # tts: SAPI 5 on a COM thread
+    "Win32_Media_Speech",
+    "Win32_System_Com",
+    # accessibility: UI Automation (Win32_UI_Accessibility above), runtime
+    # ids as SAFEARRAYs (Ole), SetFocus (Win32_UI_Input_KeyboardAndMouse above)
+    "Win32_System_Ole",
+    # virtual-screen: a hidden desktop per screen (CreateDesktopW) and the
+    # programs launched on it (CreateProcessW is in Win32_System_Threading)
+    "Win32_System_StationsAndDesktops",
+    # virtual-screen capture: PrintWindow on each window of a hidden desktop
+    "Win32_Storage_Xps",
+] }
+
+[dev-dependencies]
+tempfile.workspace = true
+tokio = { workspace = true, features = ["test-util"] }

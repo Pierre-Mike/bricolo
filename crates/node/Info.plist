@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- The Info.plist of bricolo.app, the helper app inside bricolo.app
+     that holds `bricolo` (scripts/bundle-macos.sh), and embedded in the `bricolo`
+     binary on macOS (build.rs), for a plain `bricolo` the LaunchAgent runs.
+     macOS reads the usage strings from here when it asks for a permission
+     on behalf of the node. Keep them in step with crates/ui/Info.plist. -->
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>com.pierre-mike.bricolo.node</string>
+	<key>CFBundleName</key>
+	<string>bricolo node</string>
+	<key>CFBundleExecutable</key>
+	<string>bricolo</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleIconFile</key>
+	<string>icon.icns</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Plugins and scripts you install record from the microphone, for dictation and voice commands.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>bricolo takes a photo when an app you installed asks for one.</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Plugins and scripts you install control other apps.</string>
+</dict>
+</plist>

@@ -1,0 +1,23 @@
+name = "lmstudio"
+version = "0.1.0"
+description = "Runs the LM Studio server and switches its loaded model from a hub tile, through the lms command-line tool."
+# Standard library interfaces the component imports. `bricolo check` fails if
+# the component imports one that is not listed here.
+imports = ["log", "kv", "timer", "ui", "shell"]
+# The built component, relative to this folder. Only `bricolo install` reads it.
+wasm = "target/wasm32-wasip2/release/lmstudio.wasm"
+
+# `lms` does the work; `test` checks it is there. `sh` starts `lms load`
+# detached, because a big model takes longer than the 60 seconds a run
+# may last. Keep the first entry equal to `lms` in [settings].
+[shell]
+allow = ["/Users/me/.lmstudio/bin/lms", "/bin/test", "/bin/sh"]
+
+# Defaults passed to init as JSON. Override them in node.toml under
+# [plugins.lmstudio].
+[settings]
+lms = "/Users/me/.lmstudio/bin/lms"
+load_log = "/tmp/bricolo-lmstudio-load.log"
+poll_ms = 15000
+catalog_ms = 300000
+load_timeout_ms = 300000

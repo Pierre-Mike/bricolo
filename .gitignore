@@ -1,0 +1,18 @@
+/target
+**/*.rs.bk
+*.wasm
+!plugins/**/*.wasm
+.DS_Store
+.env
+
+# Tauri writes its permission schemas here on each build.
+/crates/ui/gen/
+
+# Release archives from `just bundle-linux`.
+/dist/
+
+# apps/: build output, and copies that live elsewhere.
+/apps/**/target/
+__pycache__/
+# Built from overlay.swift with `swiftc -O overlay.swift -o overlay`.
+/apps/noseguard/sidecar/daemon/overlay/overlay

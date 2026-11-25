@@ -1,0 +1,16 @@
+[package]
+name = "bricolo-router"
+description = "Reads rules.toml and sends each capability call to a local or remote provider."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+async-trait.workspace = true
+bricolo-providers.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+toml.workspace = true
+tracing.workspace = true

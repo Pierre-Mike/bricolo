@@ -1,0 +1,102 @@
+//! The logic, with no capability calls and no generated bindings, so
+//! `cargo test` runs it natively.
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Settings {
+    /// The sidecar endpoint. Its host:port must be in `[http] allow`.
+    pub url: String,
+    pub chord: String,
+    pub timeout_ms: u32,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            url: "http://127.0.0.1:__PORT__/process".into(),
+            chord: "ctrl+alt+shift+p".into(),
+            timeout_ms: 30_000,
+        }
+    }
+}
+
+impl Settings {
+    /// Reads the settings JSON from `init`. Missing or wrong values keep
+    /// their defaults.
+    pub fn from_json(config: &str) -> Self {
+        let mut settings = Self::default();
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(config) else {
+            return settings;
+        };
+        if let Some(url) = value["url"].as_str() {
+            settings.url = url.into();
+        }
+        if let Some(chord) = value["chord"].as_str() {
+            settings.chord = chord.into();
+        }
+        if let Some(ms) = value["timeout_ms"].as_u64() {
+            settings.timeout_ms = ms.clamp(100, 300_000) as u32;
+        }
+        settings
+    }
+}
+
+/// What to send: the clipboard text, or a sample when it holds none.
+pub fn text_to_send(clipboard: Option<&str>) -> String {
+    match clipboard {
+        Some(text) if !text.trim().is_empty() => text.to_string(),
+        _ => "hello from __NAME__".to_string(),
+    }
+}
+
+/// The sidecar's answer as text, or why it failed. A sidecar answers
+/// errors with a status of 400 or more and the reason as the body.
+pub fn read_answer(status: u16, body: &[u8]) -> Result<String, String> {
+    let text = String::from_utf8_lossy(body).trim().to_string();
+    if status >= 400 {
+        return Err(format!("the sidecar answered {status}: {}", preview(&text, 200)));
+    }
+    Ok(text)
+}
+
+/// `text` on one line, cut to `max` characters with "…".
+pub fn preview(text: &str, max: usize) -> String {
+    let flat = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if flat.chars().count() > max {
+        flat.chars().take(max).collect::<String>() + "…"
+    } else {
+        flat
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sends_a_sample_without_clipboard_text() {
+        assert_eq!(text_to_send(Some("abc")), "abc");
+        assert_eq!(text_to_send(Some("  \n")), "hello from __NAME__");
+        assert_eq!(text_to_send(None), "hello from __NAME__");
+    }
+
+    #[test]
+    fn reads_answers_and_errors() {
+        assert_eq!(read_answer(200, b"DONE\n"), Ok("DONE".into()));
+        let err = read_answer(500, b"model not loaded").unwrap_err();
+        assert!(err.contains("500") && err.contains("model not loaded"), "{err}");
+    }
+
+    #[test]
+    fn previews_on_one_line() {
+        assert_eq!(preview("a\n b", 10), "a b");
+        assert_eq!(preview("abcdef", 3), "abc…");
+    }
+
+    #[test]
+    fn settings_override_defaults() {
+        let s = Settings::from_json(r#"{"url":"http://127.0.0.1:9/x","timeout_ms":1}"#);
+        assert_eq!(s.url, "http://127.0.0.1:9/x");
+        assert_eq!(s.timeout_ms, 100);
+        assert_eq!(Settings::from_json("").chord, "ctrl+alt+shift+p");
+    }
+}

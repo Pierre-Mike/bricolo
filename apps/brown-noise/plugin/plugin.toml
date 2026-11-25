@@ -1,0 +1,18 @@
+name = "brown-noise"
+version = "0.1.0"
+description = "A noise machine in a hub tile: a Play switch, volume buttons and one button per noise color."
+# Standard library interfaces the component imports. `bricolo check` fails if
+# the component imports one that is not listed here. The component does not
+# call `disk`; it is listed because a `disk:` grant needs it, and `audio`
+# reads the noise files under that grant.
+imports = ["log", "kv", "ui", "audio", "disk"]
+# The noise_<color>.wav files, read only.
+permissions = ["disk:read:~/.config/bricolo/sounds/noise"]
+# The built component, relative to this folder. Only `bricolo install` reads it.
+wasm = "target/wasm32-wasip2/release/brown_noise.wasm"
+
+# Defaults passed to init as JSON. Override them in node.toml under
+# [plugins.brown-noise]. A `sounds` folder outside the grant above is denied.
+[settings]
+sounds = "~/.config/bricolo/sounds/noise"
+step = 10

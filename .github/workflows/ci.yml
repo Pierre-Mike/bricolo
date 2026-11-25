@@ -1,0 +1,126 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Debug builds of Wasmtime, iroh and Tauri with full debug info filled the
+# ubuntu runner's disk. Line tables are enough for test backtraces.
+env:
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+  CARGO_PROFILE_TEST_DEBUG: line-tables-only
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  ci:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      # The ubuntu image ships about 14 GB free; these preinstalled SDKs
+      # take another 20 GB that this build never uses.
+      - name: Free disk space
+        if: runner.os == 'Linux'
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          df -h /
+      # bricolo-ui is a Tauri app: on Linux it builds against GTK 3 and
+      # WebKitGTK, found through pkg-config.
+      - name: Install Tauri's Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+            libxdo-dev libssl-dev build-essential pkg-config file
+      # rustup reads rust-toolchain.toml: Rust 1.99.1, clippy, rustfmt and
+      # the wasm32-wasip2 target.
+      - name: Install the toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just,cargo-nextest,cargo-deny
+      - run: just ci
+      # `just ci` already builds and tests bricolo-ui; on Linux this names the
+      # step that fails when only the hub breaks (`just check-linux` skips
+      # bricolo-ui, so this is where its Linux build is checked).
+      - name: Build and test bricolo-ui
+        if: runner.os == 'Linux'
+        run: cargo build -p bricolo-ui && cargo nextest run -p bricolo-ui
+
+  # The Linux desktop providers against a real X server: Xvfb, openbox,
+  # dunst and gnome-keyring inside dbus-run-session, then the X11 tests and
+  # a smoke test of `bricolo run`, as `just linux-test` does in Docker. See
+  # docs/linux.md.
+  linux-desktop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+      - name: Install the desktop
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            xvfb openbox xterm xdotool xclip x11-utils x11-xserver-utils \
+            dbus dbus-x11 dunst libnotify-bin gnome-keyring libsecret-tools \
+            xdg-utils libglib2.0-bin
+      - run: bash scripts/linux-test/inside.sh desktop
+
+  # Windows, natively: clippy and the tests of everything but bricolo-ui, whose
+  # WebView2 build is not set up yet (docs/windows.md). The justfile's
+  # recipes run under sh with a Unix PATH, so this calls cargo directly,
+  # with the same plugin list as `just plugins`. Tests that need a Unix
+  # tool or a desktop session are cfg-gated in the code.
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      # rust-toolchain.toml: Rust 1.99.1, clippy, rustfmt and wasm32-wasip2.
+      - name: Install the toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+      - name: Build the plugins and fixtures
+        run: |
+          packages=$(for d in plugins/*/ fixtures/*/; do
+            [ -f "$d/Cargo.toml" ] && printf -- '-p %s ' "$(basename "$d")"
+          done)
+          cargo build --target wasm32-wasip2 --release $packages
+      - name: Clippy
+        run: cargo clippy --workspace --exclude bricolo-ui --all-targets -- -D warnings
+      - name: Test
+        run: cargo nextest run --workspace --exclude bricolo-ui --no-fail-fast
+      # The hosted runner has a desktop session, so the desktop tests run
+      # too: UI Automation against Notepad and hidden desktops among them.
+      # A throwaway account on this throwaway runner, for the RDP-session
+      # virtual screen (Windows Server): Remote Desktop on, the account in
+      # Remote Desktop Users, its name and password stored where the node
+      # reads them.
+      - name: Account for the RDP virtual screen
+        shell: pwsh
+        run: |
+          $pw = "Rh-" + [guid]::NewGuid().ToString("N").Substring(0, 16) + "!"
+          net user bricolo-agent $pw /add
+          net localgroup "Remote Desktop Users" bricolo-agent /add
+          Set-ItemProperty "HKLM:\System\CurrentControlSet\Control\Terminal Server" fDenyTSConnections 0
+          cmdkey /generic:bricolo/virtual-screen-rdp-user /user:bricolo /pass:bricolo-agent
+          cmdkey /generic:bricolo/virtual-screen-rdp-password /user:bricolo /pass:$pw
+      - name: Desktop tests
+        run: cargo nextest run -p bricolo-providers --test windows_desktop --run-ignored only --test-threads 1 --no-fail-fast

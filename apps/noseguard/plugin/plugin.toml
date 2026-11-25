@@ -1,0 +1,24 @@
+name = "noseguard"
+version = "0.1.0"
+description = "NoseGuard in a hub tile: the noseguard sidecar watches the camera for a finger on your nose and flashes, sounds and counts each touch."
+# Standard library interfaces the component imports. `bricolo check` fails if
+# the component imports one that is not listed here.
+imports = ["log", "kv", "timer", "ui", "http"]
+# The built component, relative to this folder. Only `bricolo install` reads it.
+wasm = "target/wasm32-wasip2/release/noseguard.wasm"
+
+# The noseguard sidecar (sidecars/noseguard). Keep it in step with `url`
+# below. 127.0.0.1 and localhost are different entries.
+[http]
+allow = ["127.0.0.1:8802"]
+
+# Defaults passed to init as JSON. Override them in node.toml under
+# [plugins.noseguard].
+[settings]
+url = "http://127.0.0.1:8802"
+# How often the tile asks the sidecar for its status and count.
+poll_ms = 2000
+# Timeouts: most calls, /status, and /cameras (which opens each camera).
+timeout_ms = 5000
+status_timeout_ms = 2000
+cameras_timeout_ms = 30000

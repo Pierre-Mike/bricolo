@@ -1,0 +1,246 @@
+//! The logic, with no capability calls and no generated bindings, so
+//! `cargo test` runs it natively.
+//!
+//! A state machine: `Idle`, `Recording` and `Transcribing`. `lib.rs`
+//! passes it what happened (an [`Input`]) and carries out what it asks for
+//! (each [`Action`]), feeding the results back in.
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Settings {
+    /// Starts and stops a recording.
+    pub chord: String,
+    /// The safety stop, in seconds.
+    pub max_secs: u32,
+    /// The chord that pastes, "cmd+v" on macOS and "ctrl+v" on Linux.
+    /// Empty: leave the text on the clipboard.
+    pub paste: String,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            chord: "ctrl+alt+cmd+d".into(),
+            max_secs: 60,
+            paste: "cmd+v".into(),
+        }
+    }
+}
+
+impl Settings {
+    /// Reads the settings JSON from `init`. Missing values keep their
+    /// defaults.
+    pub fn from_json(config: &str) -> Self {
+        let mut settings = Self::default();
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(config) else {
+            return settings;
+        };
+        if let Some(chord) = value["chord"].as_str() {
+            settings.chord = chord.into();
+        }
+        if let Some(secs) = value["max_secs"].as_u64() {
+            settings.max_secs = secs.clamp(1, 600) as u32;
+        }
+        if let Some(paste) = value["paste"].as_str() {
+            settings.paste = paste.into();
+        }
+        settings
+    }
+
+    /// The paste chord as `keyboard.keystroke` takes it: the modifiers and
+    /// the key. `None` when pasting is off.
+    pub fn paste_keys(&self) -> Option<(Vec<String>, String)> {
+        let mut parts: Vec<String> = self
+            .paste
+            .split('+')
+            .map(|p| p.trim().to_string())
+            .filter(|p| !p.is_empty())
+            .collect();
+        let key = parts.pop()?;
+        Some((parts, key))
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum State {
+    Idle,
+    Recording(u64),
+    Transcribing,
+}
+
+/// What happened.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Input {
+    /// The chord was pressed.
+    Toggle,
+    /// The safety stop fired.
+    TimeUp,
+    /// `mic.record-start` answered.
+    Started(Result<u64, String>),
+    /// `mic.record-stop` answered with the file's path.
+    Stopped(Result<String, String>),
+    /// `speech.transcribe-file` answered.
+    Transcribed(Result<String, String>),
+}
+
+/// What to do next.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Action {
+    StartRecording { max_secs: u32 },
+    /// Start the safety stop, which comes back as [`Input::TimeUp`].
+    StartTimer { secs: u32 },
+    CancelTimer,
+    StopRecording(u64),
+    Transcribe(String),
+    /// Put the text on the clipboard, then press the paste chord if set.
+    Deliver(String),
+    /// Tell the user.
+    Show(String),
+    Log(String),
+}
+
+pub struct Dictation {
+    pub state: State,
+    settings: Settings,
+}
+
+impl Dictation {
+    pub fn new(settings: Settings) -> Self {
+        Self {
+            state: State::Idle,
+            settings,
+        }
+    }
+
+    pub fn handle(&mut self, input: Input) -> Vec<Action> {
+        use Action::*;
+        match (&self.state, input) {
+            (State::Idle, Input::Toggle) => vec![StartRecording {
+                // The mic's own limit backs up the timer.
+                max_secs: self.settings.max_secs + 5,
+            }],
+            (State::Idle, Input::Started(Ok(id))) => {
+                self.state = State::Recording(id);
+                vec![
+                    StartTimer {
+                        secs: self.settings.max_secs,
+                    },
+                    Show(format!("recording; {} to stop", self.settings.chord)),
+                ]
+            }
+            (State::Idle, Input::Started(Err(e))) => vec![Show(format!("cannot record: {e}"))],
+            (State::Recording(id), Input::Toggle) => {
+                let id = *id;
+                self.state = State::Transcribing;
+                vec![CancelTimer, StopRecording(id)]
+            }
+            (State::Recording(id), Input::TimeUp) => {
+                let id = *id;
+                self.state = State::Transcribing;
+                vec![
+                    Log(format!("stopped after {} s", self.settings.max_secs)),
+                    StopRecording(id),
+                ]
+            }
+            (State::Transcribing, Input::Stopped(Ok(path))) => vec![Transcribe(path)],
+            (State::Transcribing, Input::Stopped(Err(e))) => {
+                self.state = State::Idle;
+                vec![Show(format!("recording failed: {e}"))]
+            }
+            (State::Transcribing, Input::Transcribed(result)) => {
+                self.state = State::Idle;
+                match result {
+                    Ok(text) if text.trim().is_empty() => vec![Show("heard nothing".into())],
+                    Ok(text) => vec![Deliver(text.trim().to_string())],
+                    Err(e) => vec![Show(format!("transcription failed: {e}"))],
+                }
+            }
+            // A press while transcribing, or a stale timer: nothing to do.
+            _ => Vec::new(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn machine() -> Dictation {
+        Dictation::new(Settings::default())
+    }
+
+    #[test]
+    fn a_take_records_transcribes_and_delivers() {
+        let mut d = machine();
+        assert_eq!(
+            d.handle(Input::Toggle),
+            [Action::StartRecording { max_secs: 65 }]
+        );
+        let started = d.handle(Input::Started(Ok(7)));
+        assert_eq!(started[0], Action::StartTimer { secs: 60 });
+        assert_eq!(d.state, State::Recording(7));
+        assert_eq!(
+            d.handle(Input::Toggle),
+            [Action::CancelTimer, Action::StopRecording(7)]
+        );
+        // Presses while transcribing are dropped.
+        assert_eq!(d.handle(Input::Toggle), []);
+        assert_eq!(
+            d.handle(Input::Stopped(Ok("/data/recordings/a.wav".into()))),
+            [Action::Transcribe("/data/recordings/a.wav".into())]
+        );
+        assert_eq!(
+            d.handle(Input::Transcribed(Ok(" hello world \n".into()))),
+            [Action::Deliver("hello world".into())]
+        );
+        assert_eq!(d.state, State::Idle);
+    }
+
+    #[test]
+    fn the_safety_stop_ends_a_long_take() {
+        let mut d = machine();
+        d.handle(Input::Toggle);
+        d.handle(Input::Started(Ok(1)));
+        let actions = d.handle(Input::TimeUp);
+        assert_eq!(actions.last(), Some(&Action::StopRecording(1)));
+        assert_eq!(d.state, State::Transcribing);
+        // A timer that fires after a manual stop changes nothing.
+        let mut d = machine();
+        d.handle(Input::Toggle);
+        d.handle(Input::Started(Ok(1)));
+        d.handle(Input::Toggle);
+        assert_eq!(d.handle(Input::TimeUp), []);
+    }
+
+    #[test]
+    fn failures_are_shown_and_go_back_to_idle() {
+        let mut d = machine();
+        d.handle(Input::Toggle);
+        let actions = d.handle(Input::Started(Err("unavailable".into())));
+        assert_eq!(actions, [Action::Show("cannot record: unavailable".into())]);
+        assert_eq!(d.state, State::Idle);
+
+        d.handle(Input::Started(Ok(2)));
+        d.handle(Input::Toggle);
+        let actions = d.handle(Input::Transcribed(Err("timeout".into())));
+        assert_eq!(actions, [Action::Show("transcription failed: timeout".into())]);
+        assert_eq!(d.state, State::Idle);
+
+        d.handle(Input::Started(Ok(3)));
+        d.handle(Input::Toggle);
+        assert_eq!(
+            d.handle(Input::Transcribed(Ok("  ".into()))),
+            [Action::Show("heard nothing".into())]
+        );
+    }
+
+    #[test]
+    fn settings_and_the_paste_chord() {
+        let s = Settings::from_json(r#"{"chord": "f5", "max_secs": 9999, "paste": "ctrl+v"}"#);
+        assert_eq!(s.chord, "f5");
+        assert_eq!(s.max_secs, 600);
+        assert_eq!(s.paste_keys(), Some((vec!["ctrl".into()], "v".into())));
+        assert_eq!(Settings::from_json("not json"), Settings::default());
+        let off = Settings::from_json(r#"{"paste": ""}"#);
+        assert_eq!(off.paste_keys(), None);
+    }
+}

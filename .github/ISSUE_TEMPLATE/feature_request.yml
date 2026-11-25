@@ -1,0 +1,21 @@
+name: Idea or feature
+description: A capability, a platform, an app, or a change to how things work.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: want
+    attributes:
+      label: What you want to do
+      description: The automation or workflow you have in mind, in plain words.
+    validations:
+      required: true
+  - type: textarea
+    id: missing
+    attributes:
+      label: What is missing today
+      description: Which capability, platform or tool stops you.
+  - type: textarea
+    id: idea
+    attributes:
+      label: How it could work
+      description: Optional. A sketch of the API, config or UI.

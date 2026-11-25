@@ -1,0 +1,74 @@
+name = "dictation"
+version = "0.1.0"
+description = "Hold Fn or press a chord to dictate; the take is cleaned, reviewed and pasted, and the tile rewrites it with Claude."
+# Standard library interfaces the component imports. `bricolo check` fails if
+# the component imports one that is not listed here.
+imports = ["log", "kv", "timer", "hotkey", "mic", "speech", "clipboard", "keyboard", "ui", "shell", "disk", "audio"]
+# The rewrite presets and the start sound, read only. mic writes into this
+# plugin's own data folder, which speech.transcribe-file accepts without a
+# grant.
+permissions = [
+    "disk:read:~/.config/bricolo/text_actions.json",
+    "disk:read:/System/Library/Sounds/Tink.aiff",
+]
+# The built component, relative to this folder. Only `bricolo install` reads it.
+wasm = "target/wasm32-wasip2/release/dictation.wasm"
+
+# media-control pauses and resumes the music; claude rewrites the take.
+[shell]
+allow = ["/opt/homebrew/bin/media-control", "/Users/me/.local/bin/claude"]
+
+# Defaults passed to init as JSON. Override them in node.toml under
+# [plugins.dictation]. `speech` needs a [speech] server in node.toml.
+[settings]
+# Starts and stops a recording.
+chord = "ctrl+alt+shift+d"
+# Records while held; "" turns holding off.
+hold = "fn"
+# A shorter hold is a slip, and is dropped.
+min_hold_ms = 300
+# The safety stop.
+max_secs = 120
+# Opens the mic once after start, so the first take does not wait for the
+# device to wake. The mic indicator flashes once.
+prime_mic = true
+# These four must stay covered by [shell] allow and permissions above.
+media_control = "/opt/homebrew/bin/media-control"
+presets_file = "~/.config/bricolo/text_actions.json"
+claude = "/Users/me/.local/bin/claude"
+# The chord that pastes the take: "ctrl+v" on Linux.
+paste = "cmd+v"
+# Played on each press; "" turns it off.
+start_sound = "/System/Library/Sounds/Tink.aiff"
+
+# How the hub's Settings tab shows these.
+[settings_ui.chord]
+hidden = true
+
+[settings_ui.hold]
+label = "Hold to record"
+help = "The key that records while held; empty turns holding off."
+
+[settings_ui.min_hold_ms]
+label = "Shortest hold (ms)"
+help = "A shorter hold is a slip, and is dropped."
+
+[settings_ui.max_secs]
+label = "Longest take (s)"
+
+[settings_ui.prime_mic]
+label = "Wake the microphone at start"
+
+[settings_ui.start_sound]
+label = "Start sound"
+choices = ["/System/Library/Sounds/Tink.aiff", "/System/Library/Sounds/Pop.aiff", "/System/Library/Sounds/Glass.aiff", ""]
+help = "Empty turns it off."
+
+[settings_ui.media_control]
+help = "Must stay in [shell] allow of plugin.toml."
+
+[settings_ui.claude]
+help = "Must stay in [shell] allow of plugin.toml."
+
+[settings_ui.presets_file]
+help = "Must stay covered by the disk permissions of plugin.toml."

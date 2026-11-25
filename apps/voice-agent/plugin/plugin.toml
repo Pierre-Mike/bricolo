@@ -1,0 +1,65 @@
+name = "voice-agent"
+version = "0.1.0"
+description = "Starts and ends calls with the pipecat voice agent daemon, shows its state, voice and daily review in a hub tile, and where each turn's wait goes in a speed widget."
+# Standard library interfaces the component imports. `bricolo check` fails if
+# the component imports one that is not listed here.
+imports = ["log", "kv", "timer", "hotkey", "ui", "http", "shell", "disk"]
+# The daily reviews the "Open the latest review" button lists, and the
+# latency log (LATENCY_LOG=1) the speed widget reads.
+permissions = [
+    "disk:read:~/Github/pipecat-voice-agent/data/retros",
+    "disk:read:~/Github/pipecat-voice-agent/data/latency",
+]
+# The built component, relative to this folder. Only `bricolo install` reads it.
+wasm = "target/wasm32-wasip2/release/voice_agent.wasm"
+
+# /bin/sh only starts the daemon and the review detached (cd, nohup, >>
+# log, &), which no single program does. lsof and kill stop whatever holds
+# the daemon's port before a restart; test checks the venv; date gives the
+# local day and time for the daily review; open shows a review.
+[shell]
+allow = ["/bin/sh", "/bin/test", "/usr/sbin/lsof", "/bin/kill", "/bin/date", "/usr/bin/open"]
+env = ["USER", "PYTHONUNBUFFERED"]
+
+# The daemon and pocket-tts, for its list of voices.
+[http]
+allow = ["127.0.0.1:8792", "127.0.0.1:8791"]
+
+# Defaults passed to init as JSON. Override them in node.toml under
+# [plugins.voice-agent]. The URLs must stay within [http] allow, and the
+# reviews under `project` within the disk: grant above.
+[settings]
+chord = "ctrl+alt+cmd+v"
+project = "/Users/me/Github/pipecat-voice-agent"
+uv = "/Users/me/.local/bin/uv"
+user = "me"
+base_url = "http://127.0.0.1:8792"
+pocket_tts_url = "http://127.0.0.1:8791"
+daemon_log = "/tmp/hs-voice-agent-daemon.log"
+retro_log = "/tmp/hs-voice-agent-retro.log"
+retro_at = "18:30"
+startup_grace_s = 90
+relaunches = 3
+# The speed widget summarises this many of the latest turns.
+speed_turns = 50
+
+# How the hub's Settings tab shows these. Paths and URLs fall under
+# Advanced on their own.
+[settings_ui.chord]
+hidden = true
+
+[settings_ui.retro_at]
+label = "Daily review time"
+
+[settings_ui.speed_turns]
+label = "Turns in the speed widget"
+
+[settings_ui.startup_grace_s]
+label = "Daemon start grace (s)"
+help = "How long a starting daemon may take before it counts as failed."
+
+[settings_ui.relaunches]
+label = "Daemon relaunches"
+
+[settings_ui.user]
+advanced = true

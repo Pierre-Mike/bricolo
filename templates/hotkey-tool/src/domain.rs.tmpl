@@ -1,0 +1,93 @@
+//! The logic, with no capability calls and no generated bindings, so
+//! `cargo test` runs it natively.
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Settings {
+    pub chord: String,
+    pub max_chars: usize,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            chord: "ctrl+alt+shift+c".into(),
+            max_chars: 200,
+        }
+    }
+}
+
+impl Settings {
+    /// Reads the settings JSON from `init`. Missing or wrong values keep
+    /// their defaults.
+    pub fn from_json(config: &str) -> Self {
+        let mut settings = Self::default();
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(config) else {
+            return settings;
+        };
+        if let Some(chord) = value["chord"].as_str() {
+            settings.chord = chord.into();
+        }
+        if let Some(max) = value["max_chars"].as_u64() {
+            settings.max_chars = (max as usize).max(1);
+        }
+        settings
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Note {
+    pub title: String,
+    pub body: String,
+}
+
+/// The notification for the clipboard's text. Runs of whitespace become
+/// one space, and text longer than `max` characters is cut with "…".
+pub fn preview(text: Option<&str>, max: usize) -> Note {
+    let flat = text
+        .unwrap_or_default()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    if flat.is_empty() {
+        return Note {
+            title: "Clipboard".into(),
+            body: "The clipboard holds no text".into(),
+        };
+    }
+    let count = flat.chars().count();
+    let body = if count > max {
+        flat.chars().take(max).collect::<String>() + "…"
+    } else {
+        flat
+    };
+    Note {
+        title: format!("Clipboard: {count} characters"),
+        body,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn previews_flatten_and_cut_long_text() {
+        let note = preview(Some("  hello\n\tworld  "), 200);
+        assert_eq!(note.body, "hello world");
+        assert_eq!(note.title, "Clipboard: 11 characters");
+        assert_eq!(preview(Some("héllo wörld"), 5).body, "héllo…");
+    }
+
+    #[test]
+    fn an_empty_clipboard_says_so() {
+        assert_eq!(preview(None, 10).body, "The clipboard holds no text");
+        assert_eq!(preview(Some(" \n "), 10).body, "The clipboard holds no text");
+    }
+
+    #[test]
+    fn settings_fall_back_to_defaults() {
+        assert_eq!(Settings::from_json("not json"), Settings::default());
+        let s = Settings::from_json(r#"{"chord":"cmd+alt+v","max_chars":0}"#);
+        assert_eq!((s.chord.as_str(), s.max_chars), ("cmd+alt+v", 1));
+    }
+}

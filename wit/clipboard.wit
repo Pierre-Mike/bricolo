@@ -1,0 +1,19 @@
+/// The system clipboard: text, images and copied files.
+interface clipboard {
+  use types.{call-error};
+
+  get: async func() -> result<option<string>, call-error>;
+  set: async func(text: string) -> result<_, call-error>;
+  /// What the clipboard holds now, among `text`, `image` and `files`.
+  formats: async func() -> result<list<string>, call-error>;
+  /// Saves the clipboard's image as a PNG in the caller's data folder and
+  /// returns its path, or none when it holds no image.
+  get-image: async func() -> result<option<string>, call-error>;
+  /// Puts the image in a PNG or JPEG file on the clipboard. The path must
+  /// be inside the caller's disk grants or its data folder.
+  set-image: async func(path: string) -> result<_, call-error>;
+  /// The paths of the files copied in the file manager, if any.
+  get-files: async func() -> result<list<string>, call-error>;
+  /// Copies files, as the file manager does, so a paste drops them.
+  set-files: async func(paths: list<string>) -> result<_, call-error>;
+}

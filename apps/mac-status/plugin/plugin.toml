@@ -1,0 +1,17 @@
+name = "mac-status"
+version = "0.1.0"
+description = "Battery, memory and free disk in a hub widget, refreshed every 10 seconds."
+# Standard library interfaces the component imports. `bricolo check` fails if
+# the component imports one that is not listed here.
+imports = ["log", "timer", "ui", "shell", "system"]
+# The built component, relative to this folder. Only `bricolo install` reads it.
+wasm = "target/wasm32-wasip2/release/mac_status.wasm"
+
+# Memory from vm_stat and sysctl, free disk from df; run directly, no shell.
+[shell]
+allow = ["/usr/bin/vm_stat", "/usr/sbin/sysctl", "/bin/df"]
+
+# Defaults passed to init as JSON. Override them in node.toml under
+# [plugins.mac-status].
+[settings]
+every_ms = 10000

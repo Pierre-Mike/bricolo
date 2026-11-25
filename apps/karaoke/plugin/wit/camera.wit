@@ -1,0 +1,10 @@
+/// Photos from this device's camera, taken with ffmpeg like `mic`. Needs
+/// the Camera permission on macOS; without it calls answer `failed`.
+/// Always runs on this node.
+interface camera {
+  use types.{call-error};
+
+  /// Takes one photo with the default camera, saves it as a JPEG in the
+  /// plugin's data folder and returns its path.
+  snapshot: async func() -> result<string, call-error>;
+}

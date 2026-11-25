@@ -1,0 +1,111 @@
+# cargo deny check: licenses and advisories. Only the licenses below pass,
+# so any GPL, LGPL or AGPL dependency fails the build.
+
+[graph]
+all-features = false
+# The platforms we ship for. Without this list cargo deny also walks the
+# Linux dependencies of macOS-only crates (tao pulls gtk there).
+targets = [
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-pc-windows-msvc",
+]
+
+[advisories]
+version = 2
+yanked = "deny"
+ignore = [
+    # Unmaintained, with no known vulnerability. iroh's netwatch pulls it in
+    # through netlink-packet-core; the advisory lists no safe upgrade.
+    { id = "RUSTSEC-2024-0436", reason = "paste: unmaintained, used by iroh's netwatch" },
+    # proc-macro-error, unmaintained, with no known vulnerability. gtk-rs
+    # 0.18 reaches it through glib-macros: tao's Linux dependencies (never
+    # built for the node) and Tauri's on Linux (bricolo-ui), which has no GTK 3
+    # bindings without it.
+    { id = "RUSTSEC-2024-0370", reason = "proc-macro-error via gtk-rs glib-macros; unmaintained, no vulnerability" },
+    # chrono, unmaintained, with no known vulnerability. iroh's netwatch
+    # pulls it in through wmi, on Windows only; the advisory lists no safe
+    # upgrade.
+    { id = "RUSTSEC-2026-0543", reason = "chrono: unmaintained, used by iroh's netwatch through wmi on Windows" },
+]
+
+[licenses]
+version = 2
+confidence-threshold = 0.9
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "CC0-1.0",
+    "ISC",
+    "MIT",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+
+# Mozilla's root certificate list, a data license. ureq's platform verifier
+# falls back to it where the OS store is missing.
+[[licenses.exceptions]]
+allow = ["CDLA-Permissive-2.0"]
+crate = "webpki-root-certs"
+
+# The same list in another crate, used by iroh to reach its relays.
+[[licenses.exceptions]]
+allow = ["CDLA-Permissive-2.0"]
+crate = "webpki-roots"
+
+# arboard's Windows backend and its error crate, under the Boost license
+# (permissive, OSI approved). We build arboard on Linux only; cargo deny
+# walks its Windows dependencies anyway because of the targets above.
+[[licenses.exceptions]]
+allow = ["BSL-1.0"]
+crate = "clipboard-win"
+
+[[licenses.exceptions]]
+allow = ["BSL-1.0"]
+crate = "error-code"
+
+# Tauri (bricolo-ui) needs these five MPL-2.0 crates; there is no feature that
+# drops them. MPL-2.0 is copyleft per file: we use them unmodified and their
+# source is on crates.io, so bricolo-ui stays MIT. Allowed for these crates only.
+# - cssparser, cssparser-macros, selectors and dtoa-short come in through
+#   dom_query, which tauri-codegen and tauri-build use to process the HTML
+#   at compile time. They are not linked into bricolo-ui.
+# - option-ext is linked: dirs, which tauri and wry use for user folders,
+#   depends on it.
+[[licenses.exceptions]]
+allow = ["MPL-2.0"]
+crate = "cssparser"
+
+[[licenses.exceptions]]
+allow = ["MPL-2.0"]
+crate = "cssparser-macros"
+
+[[licenses.exceptions]]
+allow = ["MPL-2.0"]
+crate = "selectors"
+
+[[licenses.exceptions]]
+allow = ["MPL-2.0"]
+crate = "dtoa-short"
+
+[[licenses.exceptions]]
+allow = ["MPL-2.0"]
+crate = "option-ext"
+
+[licenses.private]
+# Our own unpublished crates.
+ignore = true
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

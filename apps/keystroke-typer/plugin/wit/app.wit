@@ -1,0 +1,28 @@
+/// Apps on this device.
+interface app {
+  use types.{call-error};
+
+  record app-info {
+    name: string,
+    bundle-id: option<string>,
+    pid: s32,
+  }
+
+  /// Launches an app, or brings it to the front if it runs. `app` is a
+  /// bundle id ("com.apple.Safari") or a name ("Safari"), not a path.
+  launch: async func(app: string) -> result<_, call-error>;
+  /// Opens `url` with its default app. `file:` URLs answer `denied`.
+  open-url: async func(url: string) -> result<_, call-error>;
+  /// Apps that show in the Dock.
+  running: async func() -> result<list<app-info>, call-error>;
+  frontmost: async func() -> result<option<app-info>, call-error>;
+  /// Starts or stops delivering `app` events to this plugin: launches,
+  /// quits, and the app that comes to the front.
+  watch: async func(on: bool) -> result<_, call-error>;
+  /// Asks the app to quit, as Cmd+Q does. `app` is a bundle id or a name.
+  /// Answers `failed` when no such app runs.
+  quit: async func(app: string) -> result<_, call-error>;
+  /// Hides the app's windows, as Cmd+H does, or shows them again when
+  /// `hidden` is false. Answers `failed` when no such app runs.
+  set-hidden: async func(app: string, hidden: bool) -> result<_, call-error>;
+}

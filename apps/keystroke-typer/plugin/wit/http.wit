@@ -1,0 +1,26 @@
+/// HTTP requests to the `host:port` pairs listed under `[http] allow` in
+/// plugin.toml. Others answer `denied`. Redirects are not followed: a 3xx
+/// comes back as the response.
+interface http {
+  use types.{call-error};
+
+  record request {
+    /// "GET", "POST"…
+    method: string,
+    /// An absolute http or https URL.
+    url: string,
+    headers: list<tuple<string, string>>,
+    body: list<u8>,
+    /// Default 30 s, at most 300 s.
+    timeout-ms: option<u32>,
+  }
+
+  record response {
+    status: u16,
+    headers: list<tuple<string, string>>,
+    body: list<u8>,
+  }
+
+  /// Any status is a response; only transport failures are errors.
+  send: async func(request: request) -> result<response, call-error>;
+}

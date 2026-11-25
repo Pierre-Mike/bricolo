@@ -1,0 +1,105 @@
+//! The logic, with no capability calls and no generated bindings, so
+//! `cargo test` runs it natively.
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Settings {
+    pub url: String,
+    pub every_secs: u32,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            url: "http://127.0.0.1:8080/health".into(),
+            every_secs: 60,
+        }
+    }
+}
+
+impl Settings {
+    /// Reads the settings JSON from `init`. Missing values keep their
+    /// defaults; `every_secs` is at least 10.
+    pub fn from_json(config: &str) -> Self {
+        let mut settings = Self::default();
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(config) else {
+            return settings;
+        };
+        if let Some(url) = value["url"].as_str() {
+            settings.url = url.into();
+        }
+        if let Some(secs) = value["every_secs"].as_u64() {
+            settings.every_secs = secs.clamp(10, 86_400) as u32;
+        }
+        settings
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Health {
+    /// Answered with this status, below 400.
+    Up(u16),
+    /// Answered 400 or above, or not at all.
+    Down(String),
+}
+
+impl Health {
+    /// What kv keeps between checks.
+    pub fn key(&self) -> &'static str {
+        match self {
+            Health::Up(_) => "up",
+            Health::Down(_) => "down",
+        }
+    }
+}
+
+/// A status code, or why the request failed.
+pub fn classify(answer: Result<u16, String>) -> Health {
+    match answer {
+        Ok(status) if status < 400 => Health::Up(status),
+        Ok(status) => Health::Down(format!("status {status}")),
+        Err(e) => Health::Down(e),
+    }
+}
+
+/// The line to log when the health changed since `previous` (a
+/// [`Health::key`]), or on the first check.
+pub fn change(previous: Option<&str>, now: &Health, url: &str) -> Option<String> {
+    if previous == Some(now.key()) {
+        return None;
+    }
+    Some(match now {
+        Health::Up(status) => format!("{url} is up ({status})"),
+        Health::Down(why) => format!("{url} is down: {why}"),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn classifies_answers() {
+        assert_eq!(classify(Ok(204)), Health::Up(204));
+        assert_eq!(classify(Ok(503)), Health::Down("status 503".into()));
+        assert_eq!(classify(Err("Timeout".into())), Health::Down("Timeout".into()));
+    }
+
+    #[test]
+    fn logs_only_changes() {
+        let up = Health::Up(200);
+        assert_eq!(change(None, &up, "u").as_deref(), Some("u is up (200)"));
+        assert_eq!(change(Some("up"), &up, "u"), None);
+        let down = classify(Err("Unavailable".into()));
+        assert_eq!(
+            change(Some("up"), &down, "u").as_deref(),
+            Some("u is down: Unavailable")
+        );
+    }
+
+    #[test]
+    fn settings_have_a_floor() {
+        let s = Settings::from_json(r#"{"every_secs":1}"#);
+        assert_eq!(s.every_secs, 10);
+        assert_eq!(Settings::from_json("").url, Settings::default().url);
+    }
+}

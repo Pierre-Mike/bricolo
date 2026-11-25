@@ -1,0 +1,27 @@
+/// Records the microphone of this device into the caller's data folder,
+/// through ffmpeg. Always runs on this node. One recording at a time per
+/// plugin; `bricolo status` lists who is recording under `active_sensors`.
+interface mic {
+  use types.{call-error};
+
+  enum audio-format {
+    /// WAV, 16 kHz, mono, 16-bit samples: what speech servers expect.
+    wav16k-mono,
+  }
+
+  record record-options {
+    /// The recording stops by itself after this many seconds, at most
+    /// 600. 0 means 600.
+    max-secs: u32,
+    format: audio-format,
+  }
+
+  /// Starts recording. Returns the recording's id.
+  record-start: async func(options: record-options) -> result<u64, call-error>;
+  /// Stops the recording and returns the path of its file. The file is in
+  /// the plugin's data folder (`/data/recordings/` inside the plugin), so
+  /// `speech.transcribe-file` accepts it. The newest 10 recordings are kept.
+  record-stop: async func(id: u64) -> result<string, call-error>;
+  /// Stops the recording and deletes its file.
+  record-cancel: async func(id: u64) -> result<_, call-error>;
+}

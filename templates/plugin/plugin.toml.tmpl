@@ -1,0 +1,15 @@
+name = "__NAME__"
+version = "0.1.0"
+description = "Describe what __NAME__ does."
+# Standard library interfaces the component imports. `bricolo check` fails if
+# the component imports one that is not listed here.
+imports = ["log", "kv"]
+# Extra grants, such as "disk:~/Notes" or "disk:read:~/Documents".
+# permissions = []
+# The built component, relative to this folder. Only `bricolo install` reads it.
+wasm = "__WASM__"
+
+# Defaults passed to init as JSON. Override them in node.toml under
+# [plugins.__NAME__].
+[settings]
+greeting = "hello"

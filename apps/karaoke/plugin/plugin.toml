@@ -1,0 +1,47 @@
+name = "karaoke"
+version = "0.1.0"
+description = "The lyrics of whatever is playing, one line at a time, in a caption at the bottom of the screen."
+# Standard library interfaces the component imports. `bricolo check` fails if
+# the component imports one that is not listed here.
+imports = ["log", "kv", "timer", "hotkey", "ui", "shell", "http"]
+# The built component, relative to this folder. Only `bricolo install` reads it.
+wasm = "target/wasm32-wasip2/release/karaoke.wasm"
+
+# `media-control get` says what is playing. It is a Perl script that runs
+# /usr/bin/perl itself.
+[shell]
+allow = ["/opt/homebrew/bin/media-control"]
+
+# LRCLIB, where the lyrics come from.
+[http]
+allow = ["lrclib.net:443"]
+
+# Defaults passed to init as JSON. Override them in node.toml under
+# [plugins.karaoke].
+[settings]
+chord = "cmd+alt+shift+k"
+# How often the caption is redrawn, in milliseconds.
+tick_ms = 250
+# Ticks between media-control reads, about a second.
+poll_every = 4
+# Seconds paused before the caption goes.
+pause_hide = 3.0
+# Seconds "no lyrics" stays up.
+none_hide = 5.0
+# Tries per LRCLIB request while it answers 429, 503 or nothing.
+get_tries = 4
+# Seconds per press of the timing buttons.
+nudge = 0.5
+
+# How the hub's Settings tab shows these.
+[settings_ui.chord]
+hidden = true
+
+[settings_ui.pause_hide]
+label = "Hide after a pause (s)"
+
+[settings_ui.none_hide]
+label = "Show “no lyrics” for (s)"
+
+[settings_ui.nudge]
+label = "Timing step (s)"

@@ -1,0 +1,13 @@
+[package]
+name = "caps"
+description = "Test fixture: calls clipboard, window, app, notify, tts, hotkey, shell, http and ui when told to."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen.workspace = true

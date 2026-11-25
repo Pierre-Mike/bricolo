@@ -1,0 +1,25 @@
+[package]
+name = "bricolo-mesh"
+description = "Peer list, remote provider calls, and the iroh and Tailscale transports."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+async-trait.workspace = true
+bytes.workspace = true
+futures-util.workspace = true
+iroh.workspace = true
+postcard.workspace = true
+bricolo-providers.workspace = true
+bricolo-router.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+toml.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

@@ -1,0 +1,18 @@
+name = "__NAME__"
+version = "0.1.0"
+description = "Transcribes the newest recording in a folder on a chord, and says how many words it heard."
+# Standard library interfaces the component imports. `bricolo check` fails if
+# the component imports one that is not listed here.
+imports = ["log", "hotkey", "disk", "speech", "tts"]
+# speech.transcribe-file and disk.list only reach paths granted here.
+# Keep it in step with `folder` below.
+permissions = ["disk:read:~/Recordings"]
+# The built component, relative to this folder. Only `bricolo install` reads it.
+wasm = "__WASM__"
+
+# Defaults passed to init as JSON. Override them in node.toml under
+# [plugins.__NAME__]. `speech` needs a [speech] server in node.toml.
+[settings]
+folder = "~/Recordings"
+chord = "ctrl+alt+shift+t"
+stop_chord = "ctrl+alt+shift+x"

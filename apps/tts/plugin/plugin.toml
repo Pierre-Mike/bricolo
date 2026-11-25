@@ -1,0 +1,24 @@
+name = "tts"
+version = "0.1.0"
+description = "The speech queue's tile, and a chord that reads the selection aloud."
+# Standard library interfaces the component imports. `bricolo check` fails if
+# the component imports one that is not listed here.
+imports = ["log", "timer", "hotkey", "tts", "clipboard", "keyboard", "ui"]
+# The built component, relative to this folder. Only `bricolo install` reads it.
+wasm = "target/wasm32-wasip2/release/tts.wasm"
+
+# Defaults passed to init as JSON. Override them in node.toml under
+# [plugins.tts].
+[settings]
+chord = "ctrl+alt+shift+s"
+# A [tts.profiles] name in node.toml.
+selection_voice = "reading"
+poll_ms = 3000
+
+# How the hub's Settings tab shows these.
+[settings_ui.chord]
+hidden = true
+
+[settings_ui.selection_voice]
+label = "Voice for the selection"
+help = "A [tts.profiles] name in node.toml."

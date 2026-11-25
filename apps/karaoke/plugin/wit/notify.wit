@@ -1,0 +1,6 @@
+/// Notifications shown to the user.
+interface notify {
+  use types.{call-error};
+
+  show: async func(title: string, body: string) -> result<_, call-error>;
+}

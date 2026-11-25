@@ -1,0 +1,33 @@
+/// Programs running on this device, with their CPU and memory use, and
+/// stopping or killing one. Always runs on this node. The node refuses to
+/// stop itself, its parent and the system's first process.
+interface process {
+  use types.{call-error};
+
+  record process-info {
+    pid: u32,
+    parent: option<u32>,
+    name: string,
+    /// The program and its arguments, when the system shows them.
+    command: list<string>,
+    /// The owner's user name.
+    user: option<string>,
+    /// Percent of one core over the last second; can pass 100.
+    cpu: f32,
+    /// Resident memory in bytes.
+    memory: u64,
+    /// Start time, in seconds since 1970.
+    started: u64,
+  }
+
+  /// Every process the node can see, the busiest first.
+  %list: async func() -> result<list<process-info>, call-error>;
+  /// One process, or none when it is gone.
+  get: async func(pid: u32) -> result<option<process-info>, call-error>;
+  /// Asks a process to quit, as SIGTERM does, so it can save first. On
+  /// Windows it closes the process's windows, and ends a process with
+  /// none.
+  stop: async func(pid: u32) -> result<_, call-error>;
+  /// Ends a process at once, as SIGKILL does: unsaved work is lost.
+  kill: async func(pid: u32) -> result<_, call-error>;
+}

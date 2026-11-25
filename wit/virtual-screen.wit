@@ -1,0 +1,40 @@
+/// Screens that no monitor shows, where apps run and are driven without
+/// touching the user's screen, keyboard or pointer. Linux runs each on
+/// Xvfb, and `accessibility` reaches the apps on it too. Windows Server
+/// runs each in a Remote Desktop session of its own, once an account for
+/// it is stored as secrets; other Windows editions use a hidden desktop,
+/// pictured window by window and driven by window messages, where key
+/// chords with modifiers are refused. macOS answers
+/// `unavailable` for now. Always runs on this node.
+interface virtual-screen {
+  use types.{call-error};
+
+  record virtual-screen-info {
+    id: u32,
+    /// The system's name for it: the X display, like `:99`, or the
+    /// desktop's name on Windows.
+    name: string,
+    width: u32,
+    height: u32,
+    /// The processes `launch` started there that still run.
+    pids: list<u32>,
+  }
+
+  /// Starts an empty screen of that size, in pixels.
+  create: async func(width: u32, height: u32) -> result<virtual-screen-info, call-error>;
+  %list: async func() -> result<list<virtual-screen-info>, call-error>;
+  /// Starts `program` with `args` on the screen and returns its pid. The
+  /// program must be an absolute path the caller's `[shell]` allows.
+  launch: async func(id: u32, program: string, args: list<string>) -> result<u32, call-error>;
+  /// Saves a PNG of the screen in the caller's data folder and returns
+  /// its path.
+  capture: async func(id: u32) -> result<string, call-error>;
+  /// Clicks at a point, in pixels from the top-left corner.
+  click: async func(id: u32, x: s32, y: s32) -> result<_, call-error>;
+  /// Types text into whatever has focus on that screen.
+  type-text: async func(id: u32, text: string) -> result<_, call-error>;
+  /// Presses a key or chord, like `return` or `ctrl+s`.
+  press-key: async func(id: u32, key: string) -> result<_, call-error>;
+  /// Ends the screen and every program running on it.
+  destroy: async func(id: u32) -> result<_, call-error>;
+}

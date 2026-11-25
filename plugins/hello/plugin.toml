@@ -1,0 +1,12 @@
+name = "hello"
+version = "0.1.0"
+description = "Logs a greeting, counts its starts in kv, and ticks once."
+# Standard library interfaces the component imports.
+imports = ["log", "kv", "timer"]
+# The built component, relative to this folder. Only used by `bricolo install`.
+wasm = "../../target/wasm32-wasip2/release/hello.wasm"
+
+# Defaults; override them in node.toml under [plugins.hello].
+[settings]
+greeting = "hello"
+tick_ms = 50

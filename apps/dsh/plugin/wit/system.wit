@@ -1,0 +1,21 @@
+/// The state of this device. Always runs on this node.
+interface system {
+  use types.{call-error};
+
+  /// Named `power-info` because `power` is the function below.
+  record power-info {
+    /// 0 to 100, or none without a battery.
+    battery: option<u8>,
+    /// On mains power. Always true on a desktop.
+    plugged-in: bool,
+  }
+
+  /// Seconds since the last key press, click or pointer move.
+  idle-seconds: async func() -> result<u64, call-error>;
+  power: async func() -> result<power-info, call-error>;
+  /// Keeps the device from idle sleep while `on`, until `keep-awake(false)`
+  /// or the plugin stops.
+  keep-awake: async func(on: bool) -> result<_, call-error>;
+  /// Starts or stops delivering `system` events to this plugin.
+  watch: async func(on: bool) -> result<_, call-error>;
+}

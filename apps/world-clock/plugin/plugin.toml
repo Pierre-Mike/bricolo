@@ -1,0 +1,18 @@
+name = "world-clock"
+version = "0.1.0"
+description = "The time in other cities, in a hub widget; switches in its card pick the cities."
+# Standard library interfaces the component imports. `bricolo check` fails if
+# the component imports one that is not listed here.
+imports = ["log", "kv", "timer", "ui", "shell"]
+# The built component, relative to this folder. Only `bricolo install` reads it.
+wasm = "target/wasm32-wasip2/release/world_clock.wasm"
+
+# `date` is the only program it runs; TZ picks the zone.
+[shell]
+allow = ["/bin/date"]
+env = ["TZ"]
+
+# Defaults passed to init as JSON. Override them in node.toml under
+# [plugins.world-clock].
+[settings]
+every_ms = 30000

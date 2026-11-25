@@ -1,0 +1,10 @@
+/// A small key/value store private to each plugin, kept in its data folder.
+/// It survives restarts and reloads.
+interface kv {
+  use types.{call-error};
+
+  get: func(key: string) -> option<string>;
+  set: func(key: string, value: string) -> result<_, call-error>;
+  delete: func(key: string) -> result<_, call-error>;
+  keys: func() -> list<string>;
+}

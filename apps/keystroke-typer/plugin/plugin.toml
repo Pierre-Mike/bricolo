@@ -1,0 +1,31 @@
+name = "keystroke-typer"
+version = "0.1.0"
+description = "Types the clipboard as real keystrokes, for places that refuse or mangle a paste."
+# Standard library interfaces the component imports. `bricolo check` fails if
+# the component imports one that is not listed here.
+imports = ["log", "hotkey", "clipboard", "keyboard", "ui"]
+# The built component, relative to this folder. Only `bricolo install` reads it.
+wasm = "target/wasm32-wasip2/release/keystroke_typer.wasm"
+
+# Defaults passed to init as JSON. Override them in node.toml under
+# [plugins.keystroke-typer].
+[settings]
+# Types the clipboard into the focused app.
+chord = "cmd+shift+alt+t"
+# "return" types a real Return at each line break. "shift-return" breaks
+# the line without sending, for Slack and Teams.
+newline = "return"
+# Refuse a longer clipboard; bricolo types at most 20000.
+max_chars = 20000
+
+# How the hub's Settings tab shows these.
+[settings_ui.chord]
+hidden = true
+
+[settings_ui.newline]
+label = "A line break types"
+choices = ["return", "shift-return"]
+help = "shift-return breaks the line without sending, for Slack and Teams."
+
+[settings_ui.max_chars]
+label = "Longest clipboard (characters)"

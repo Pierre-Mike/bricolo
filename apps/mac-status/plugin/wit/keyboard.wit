@@ -1,0 +1,17 @@
+/// Synthetic key presses on this device: shortcuts and typed text. Always
+/// runs on this node, never on a peer. On macOS it needs the Accessibility
+/// permission (else `denied`); on Linux an X11 session with the XTEST
+/// extension (on Wayland and without a display, `unavailable`).
+interface keyboard {
+  use types.{call-error};
+
+  /// Presses `key` with `mods` held, then lets go of both. Names follow
+  /// hotkey chords: mods are "cmd", "ctrl", "alt" and "shift"; keys are
+  /// "a" to "z", "0" to "9", "f1" to "f20", "left", "enter", "tab",
+  /// "escape", "space", "delete" and the like. Keys are physical positions
+  /// on a US layout.
+  keystroke: async func(mods: list<string>, key: string) -> result<_, call-error>;
+  /// Types `text` into the focused app one key press per character, as a
+  /// person types, with no modifiers held. At most 20000 characters.
+  type-text: async func(text: string) -> result<_, call-error>;
+}

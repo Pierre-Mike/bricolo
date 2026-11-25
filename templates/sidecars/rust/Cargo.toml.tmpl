@@ -1,0 +1,17 @@
+[package]
+name = "__NAME__"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "A sidecar for bricolo."
+
+# The standard library only: no dependencies to fetch or audit. For a
+# bigger server, tiny_http (MIT/Apache-2.0) is a small next step.
+[dependencies]
+
+# Its own workspace, so it builds wherever it sits.
+[workspace]
+
+[profile.release]
+opt-level = 3
+strip = true

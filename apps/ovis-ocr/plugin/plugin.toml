@@ -1,0 +1,28 @@
+name = "ovis-ocr"
+version = "0.1.0"
+description = "Local OCR to Markdown: a chord or a hub tile reads a screen region or the clipboard image through the ovis-ocr sidecar."
+# Standard library interfaces the component imports. `bricolo check` fails if
+# the component imports one that is not listed here.
+imports = ["log", "timer", "hotkey", "clipboard", "app", "shell", "http", "ui"]
+# The built component, relative to this folder. Only `bricolo install` reads it.
+wasm = "target/wasm32-wasip2/release/ovis_ocr.wasm"
+
+# screencapture takes the region, osascript writes the clipboard image to
+# the same file, rm and test clear and check it. The plugin never reads
+# the file; the sidecar does.
+[shell]
+allow = ["/bin/rm", "/usr/sbin/screencapture", "/bin/test", "/usr/bin/osascript"]
+
+# The ovis-ocr sidecar. Keep it in step with `base` below.
+[http]
+allow = ["127.0.0.1:8797"]
+
+# Defaults passed to init as JSON. Override them in node.toml under
+# [plugins.ovis-ocr].
+[settings]
+chord = "ctrl+alt+shift+o"
+base = "http://127.0.0.1:8797"
+shot = "/tmp/bricolo-ocr-shot.png"
+poll_ms = 15000
+ocr_timeout_ms = 300000
+health_timeout_ms = 3000

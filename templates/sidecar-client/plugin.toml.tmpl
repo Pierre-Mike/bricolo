@@ -1,0 +1,19 @@
+name = "__NAME__"
+version = "0.1.0"
+description = "Sends the clipboard text to a sidecar on a chord and shows its answer."
+# Standard library interfaces the component imports. `bricolo check` fails if
+# the component imports one that is not listed here.
+imports = ["log", "hotkey", "clipboard", "http", "ui"]
+# The built component, relative to this folder. Only `bricolo install` reads it.
+wasm = "__WASM__"
+
+# The servers http.send may reach, as lowercase host:port. Keep it in step
+# with `url` below. 127.0.0.1 and localhost are different entries.
+[http]
+allow = ["127.0.0.1:__PORT__"]
+
+# Defaults passed to init as JSON. Override them in node.toml under
+# [plugins.__NAME__].
+[settings]
+url = "http://127.0.0.1:__PORT__/process"
+chord = "ctrl+alt+shift+p"

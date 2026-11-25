@@ -1,0 +1,10 @@
+# Install the hook once with `lefthook install`.
+pre-commit:
+  piped: true
+  commands:
+    fmt:
+      glob: "*.rs"
+      run: PATH="$HOME/.cargo/bin:$PATH" cargo fmt --all --check
+    clippy:
+      glob: "*.rs"
+      run: PATH="$HOME/.cargo/bin:$PATH" cargo clippy --workspace --all-targets -- -D warnings

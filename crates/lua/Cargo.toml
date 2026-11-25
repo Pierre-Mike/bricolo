@@ -1,0 +1,22 @@
+[package]
+name = "bricolo-lua"
+description = "The Lua 5.4 script tier: sandboxed scripts that call the standard library."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+futures-util.workspace = true
+mlua.workspace = true
+notify.workspace = true
+bricolo-providers.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+async-trait.workspace = true
+bricolo-router.workspace = true
+tempfile.workspace = true

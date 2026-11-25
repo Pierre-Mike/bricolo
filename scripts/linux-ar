@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Archiver for `just check-linux` on macOS. Apple's ar and ranlib drop the
+# ELF objects zig cc builds (vendored Lua), leaving an empty archive.
+exec zig ar "$@"

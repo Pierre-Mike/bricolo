@@ -1,0 +1,87 @@
+//! __NAME__: on ctrl+alt+shift+t, transcribes the newest recording in
+//! `folder` (newest by name, so timestamped names work), logs the text and
+//! says how many words it heard. ctrl+alt+shift+x stops the speech.
+//!
+//! `domain.rs` holds the logic as plain functions, tested with
+//! `cargo test`. This file is the adapter: it calls the capabilities and
+//! passes their results to the domain.
+//!
+//! Build:   cargo build --target wasm32-wasip2 --release
+//! Check:   bricolo check .
+//! Install: bricolo install . -y
+//! Try it:  bricolo fire __NAME__ transcribe-latest
+
+// The generated `event` bindings take more than seven arguments.
+#![allow(clippy::too_many_arguments)]
+
+mod domain;
+
+use std::sync::OnceLock;
+
+wit_bindgen::generate!({
+    path: "__WIT__",
+    world: "bricolo:stdlib/plugin",
+});
+
+use bricolo::stdlib::log::{self, Level};
+use bricolo::stdlib::{disk, hotkey, speech, tts};
+
+/// Binding ids. `bricolo fire __NAME__ <id>` sends them too.
+const TRANSCRIBE: &str = "transcribe-latest";
+const STOP: &str = "stop-speaking";
+
+static SETTINGS: OnceLock<domain::Settings> = OnceLock::new();
+
+struct Plugin;
+
+impl Guest for Plugin {
+    async fn init(config: String) -> Result<(), String> {
+        let settings = SETTINGS.get_or_init(|| domain::Settings::from_json(&config));
+        for (id, chord) in [(TRANSCRIBE, &settings.chord), (STOP, &settings.stop_chord)] {
+            // Log a chord that fails to bind and keep running, so
+            // `bricolo fire` still reaches the plugin.
+            if let Err(e) = hotkey::bind(id.into(), chord.clone()).await {
+                log::write(Level::Warn, &format!("cannot bind {chord}: {e:?}"));
+            }
+        }
+        log::write(
+            Level::Info,
+            &format!("press {} to transcribe the newest recording", settings.chord),
+        );
+        Ok(())
+    }
+
+    async fn on_event(event: Event) {
+        match event {
+            Event::Hotkey(id) if id == TRANSCRIBE => match transcribe_latest().await {
+                Ok(text) => log::write(Level::Info, &format!("heard: {text}")),
+                Err(e) => log::write(Level::Warn, &e),
+            },
+            Event::Hotkey(id) if id == STOP => {
+                let _ = tts::stop().await;
+            }
+            _ => {}
+        }
+    }
+
+    async fn dispose() {}
+}
+
+async fn transcribe_latest() -> Result<String, String> {
+    let settings = SETTINGS.get().cloned().unwrap_or_default();
+    let names = disk::list(settings.folder.clone())
+        .await
+        .map_err(|e| format!("cannot list {}: {e:?}", settings.folder))?;
+    let name = domain::newest_audio(&names)
+        .ok_or_else(|| format!("no recording in {}", settings.folder))?;
+    let path = domain::join(&settings.folder, name);
+    let text = speech::transcribe_file(path.clone())
+        .await
+        .map_err(|e| format!("cannot transcribe {path}: {e:?}"))?;
+    if let Err(e) = tts::speak(domain::summary(&text), None).await {
+        log::write(Level::Warn, &format!("cannot speak: {e:?}"));
+    }
+    Ok(text)
+}
+
+export!(Plugin);

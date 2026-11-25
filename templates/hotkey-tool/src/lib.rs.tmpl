@@ -1,0 +1,79 @@
+//! __NAME__: shows the clipboard text in a notification when you press
+//! the chord in its settings (ctrl+alt+shift+c by default).
+//!
+//! `domain.rs` holds the logic as plain functions, tested with
+//! `cargo test`. This file is the adapter: it calls the capabilities and
+//! passes their results to the domain.
+//!
+//! Build:   cargo build --target wasm32-wasip2 --release
+//! Check:   bricolo check .
+//! Install: bricolo install . -y
+//! Try it:  bricolo fire __NAME__ show-clipboard
+
+// The generated `event` bindings take more than seven arguments.
+#![allow(clippy::too_many_arguments)]
+
+mod domain;
+
+use std::sync::OnceLock;
+
+wit_bindgen::generate!({
+    path: "__WIT__",
+    world: "bricolo:stdlib/plugin",
+});
+
+use bricolo::stdlib::log::{self, Level};
+use bricolo::stdlib::{clipboard, hotkey, notify};
+
+/// The binding id. `bricolo fire __NAME__ show-clipboard` sends it too.
+const SHOW: &str = "show-clipboard";
+
+static SETTINGS: OnceLock<domain::Settings> = OnceLock::new();
+
+struct Plugin;
+
+impl Guest for Plugin {
+    async fn init(config: String) -> Result<(), String> {
+        let settings = SETTINGS.get_or_init(|| domain::Settings::from_json(&config));
+        // A chord another program holds fails to bind. Log it and keep
+        // running, so `bricolo fire` still reaches the plugin.
+        match hotkey::bind(SHOW.into(), settings.chord.clone()).await {
+            Ok(()) => log::write(
+                Level::Info,
+                &format!("press {} to show the clipboard", settings.chord),
+            ),
+            Err(e) => log::write(
+                Level::Warn,
+                &format!("cannot bind {}: {e:?}", settings.chord),
+            ),
+        }
+        Ok(())
+    }
+
+    async fn on_event(event: Event) {
+        match event {
+            Event::Hotkey(id) if id == SHOW => show_clipboard().await,
+            _ => {}
+        }
+    }
+
+    async fn dispose() {}
+}
+
+async fn show_clipboard() {
+    let settings = SETTINGS.get().cloned().unwrap_or_default();
+    let text = match clipboard::get().await {
+        Ok(text) => text,
+        Err(e) => {
+            log::write(Level::Warn, &format!("cannot read the clipboard: {e:?}"));
+            return;
+        }
+    };
+    let note = domain::preview(text.as_deref(), settings.max_chars);
+    match notify::show(note.title.clone(), note.body.clone()).await {
+        Ok(()) => log::write(Level::Info, &format!("shown: {}", note.title)),
+        Err(e) => log::write(Level::Warn, &format!("cannot notify: {e:?}")),
+    }
+}
+
+export!(Plugin);

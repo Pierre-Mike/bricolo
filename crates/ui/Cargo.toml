@@ -1,0 +1,44 @@
+[package]
+name = "bricolo-ui"
+description = "The Tauri 2 hub: plugin tiles, toggles, logs, the menu bar item and floating panels."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish = false
+
+[[bin]]
+name = "bricolo-ui"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+# The tray, PNG icons, and transparent windows on macOS (panels).
+tauri = { version = "2.12", features = ["tray-icon", "image-png", "macos-private-api"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# Turns the panel windows into non-activating NSPanels.
+tauri-nspanel = "2.1"
+# The chord that drops the hub down from the notch.
+global-hotkey = "0.10"
+# Brings the app and the hub forward, onto the Space in use, and places
+# the hub under the menu bar of the screen with the pointer.
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", features = [
+    "NSApplication",
+    "NSEvent",
+    "NSResponder",
+    "NSRunningApplication",
+    "NSScreen",
+    "NSWindow",
+    "NSWorkspace",
+] }
+objc2-foundation = { version = "0.3", features = ["NSArray", "NSGeometry"] }
+
+[build-dependencies]
+tauri-build = { version = "2.5", features = [] }
+
+[dev-dependencies]
+tempfile.workspace = true

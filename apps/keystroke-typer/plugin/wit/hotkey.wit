@@ -1,0 +1,12 @@
+/// Global keyboard shortcuts.
+interface hotkey {
+  use types.{call-error};
+
+  /// Binds `chord`, written like "cmd+alt+h", under `id`. Each press
+  /// delivers `hotkey(id)` to this plugin, and each release
+  /// `hotkey-released(id)` on a node that sees releases. "fn" binds the Fn
+  /// (Globe) key alone, for push-to-talk; a node that can't bind it
+  /// answers `unavailable`.
+  bind: async func(id: string, chord: string) -> result<_, call-error>;
+  unbind: async func(id: string) -> result<_, call-error>;
+}

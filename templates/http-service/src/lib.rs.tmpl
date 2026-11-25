@@ -1,0 +1,87 @@
+//! __NAME__: checks `url` every `every_secs` seconds and logs when it goes
+//! up or down. The last state is kept in kv, so a reload doesn't log the
+//! same state again.
+//!
+//! `domain.rs` holds the logic as plain functions, tested with
+//! `cargo test`. This file is the adapter: it calls the capabilities and
+//! passes their results to the domain.
+//!
+//! Build:   cargo build --target wasm32-wasip2 --release
+//! Check:   bricolo check .
+//! Install: bricolo install . -y
+//! Try it:  bricolo fire __NAME__ check-now
+
+// The generated `event` bindings take more than seven arguments.
+#![allow(clippy::too_many_arguments)]
+
+mod domain;
+
+use std::sync::OnceLock;
+
+wit_bindgen::generate!({
+    path: "__WIT__",
+    world: "bricolo:stdlib/plugin",
+});
+
+use domain::Health;
+use bricolo::stdlib::log::{self, Level};
+use bricolo::stdlib::{http, kv, timer};
+
+/// `bricolo fire __NAME__ check-now` runs a check at once.
+const CHECK_NOW: &str = "check-now";
+
+static SETTINGS: OnceLock<domain::Settings> = OnceLock::new();
+
+struct Plugin;
+
+impl Guest for Plugin {
+    async fn init(config: String) -> Result<(), String> {
+        let settings = SETTINGS.get_or_init(|| domain::Settings::from_json(&config));
+        // The first check runs soon after start, then on the interval.
+        timer::after(1000);
+        timer::every(settings.every_secs * 1000);
+        log::write(
+            Level::Info,
+            &format!("checking {} every {} s", settings.url, settings.every_secs),
+        );
+        Ok(())
+    }
+
+    async fn on_event(event: Event) {
+        match event {
+            Event::Timer(_) => check().await,
+            Event::Hotkey(id) if id == CHECK_NOW => check().await,
+            _ => {}
+        }
+    }
+
+    async fn dispose() {}
+}
+
+async fn check() {
+    let settings = SETTINGS.get().cloned().unwrap_or_default();
+    let request = http::Request {
+        method: "GET".into(),
+        url: settings.url.clone(),
+        headers: vec![],
+        body: vec![],
+        timeout_ms: Some(5000),
+    };
+    let health = match http::send(request).await {
+        Ok(response) => domain::classify(Ok(response.status)),
+        Err(e) => domain::classify(Err(format!("{e:?}"))),
+    };
+    let previous = kv::get("health");
+    if let Some(line) = domain::change(previous.as_deref(), &health, &settings.url) {
+        let level = match health {
+            Health::Up(_) => Level::Info,
+            Health::Down(_) => Level::Warn,
+        };
+        log::write(level, &line);
+    }
+    if let Err(e) = kv::set("health", health.key()) {
+        log::write(Level::Warn, &format!("kv: {e:?}"));
+    }
+}
+
+export!(Plugin);

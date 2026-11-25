@@ -1,0 +1,12 @@
+/// Files outside the plugin's own data folder, limited to the paths
+/// granted at install (`disk:~/Notes`, `disk:read:~/Documents`).
+/// Paths are absolute or start with `~/`.
+interface disk {
+  use types.{call-error};
+
+  read: async func(path: string) -> result<list<u8>, call-error>;
+  /// Creates or replaces the file. Needs a read-write grant.
+  write: async func(path: string, data: list<u8>) -> result<_, call-error>;
+  /// Names of the entries in a directory, sorted.
+  %list: async func(path: string) -> result<list<string>, call-error>;
+}

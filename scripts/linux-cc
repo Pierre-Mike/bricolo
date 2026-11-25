@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# C compiler for `just check-linux` on macOS: zig cc with a Linux sysroot.
+# cc-rs passes clang's --target spelling, which zig wants as -target.
+args=()
+for a in "$@"; do
+  case "$a" in
+    --target=*) ;;
+    *) args+=("$a") ;;
+  esac
+done
+exec zig cc -target x86_64-linux-gnu "${args[@]}"

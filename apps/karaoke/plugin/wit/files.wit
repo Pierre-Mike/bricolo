@@ -1,0 +1,12 @@
+/// Watches folders for changes. A plugin may watch only paths under its
+/// `disk:` grants. Always runs on this node.
+interface files {
+  use types.{call-error};
+
+  /// Watches `path` and everything under it, and returns an id. Each
+  /// change arrives as a `file` event carrying that id. A missing path
+  /// answers `failed`.
+  watch: async func(path: string) -> result<u64, call-error>;
+  /// Stops a watch. Stopping one that is already stopped does nothing.
+  unwatch: async func(id: u64) -> result<_, call-error>;
+}

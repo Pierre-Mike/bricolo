@@ -1,0 +1,105 @@
+package bricolo:stdlib@0.1.0;
+
+/// Types shared by every interface.
+interface types {
+  /// Why a capability call failed. Every call that can run on another
+  /// device returns this, so a plugin always handles the remote case.
+  variant call-error {
+    /// No node offering this capability is online.
+    unavailable,
+    /// The deadline passed.
+    timeout,
+    /// A permission or peer trust refused the call.
+    denied,
+    /// The provider ran and reported an error.
+    failed(string),
+  }
+
+  /// A tile switch the user toggled, with its new value.
+  record switch-toggled {
+    id: string,
+    on: bool,
+  }
+
+  /// The entry picked in a choice list, or none when it was dismissed.
+  record choice-picked {
+    panel: string,
+    index: option<u32>,
+  }
+
+  /// A review panel's answer, with the text as the user left it.
+  record review-done {
+    panel: string,
+    accepted: bool,
+    text: string,
+  }
+
+  /// What the user did with this plugin's tile or panels (`ui`).
+  variant ui-event {
+    switch(switch-toggled),
+    /// A tile button was pressed. Carries its id.
+    button(string),
+    choice(choice-picked),
+    review(review-done),
+  }
+
+  /// What happened to an app (`app.watch`).
+  enum app-change {
+    launched,
+    terminated,
+    /// It came to the front.
+    activated,
+  }
+
+  record app-event {
+    change: app-change,
+    name: string,
+    bundle-id: option<string>,
+    pid: s32,
+  }
+
+  /// What happened to the device (`system.watch`).
+  enum system-event {
+    will-sleep,
+    did-wake,
+    screen-locked,
+    screen-unlocked,
+    /// A display was added or removed, or its arrangement changed.
+    screens-changed,
+  }
+
+  /// What changed under a watched folder (`files.watch`).
+  enum file-change {
+    created,
+    modified,
+    removed,
+  }
+
+  record file-event {
+    /// The id `files.watch` returned.
+    watch: u64,
+    path: string,
+    change: file-change,
+  }
+
+  /// What the node delivers to `on-event`. Later versions add cases, so
+  /// match with a fallback arm.
+  variant event {
+    /// A timer from `timer.after` or `timer.every` fired. Carries its id.
+    timer(u64),
+    /// A hotkey bound with `hotkey.bind` was pressed. Carries the binding id.
+    hotkey(string),
+    /// A chord bound with `hotkey.bind` was released. Carries the binding
+    /// id. A node that doesn't see releases never sends it.
+    hotkey-released(string),
+    /// The user acted on this plugin's tile or panel.
+    ui(ui-event),
+    /// An app launched, quit or came to the front, after `app.watch(true)`.
+    app(app-event),
+    /// The device slept, woke, locked or unlocked, or its screens changed,
+    /// after `system.watch(true)`.
+    system(system-event),
+    /// Something changed under a folder watched with `files.watch`.
+    file(file-event),
+  }
+}

@@ -1,0 +1,51 @@
+/// Claude Code sessions on this node: start one on a task in a folder,
+/// follow its state, send it more work, stop it. The node runs the
+/// `claude` CLI headless. Folders must be under `[claude-code] dirs` in
+/// node.toml; without that section every call answers `unavailable`.
+interface claude-code {
+  use types.{call-error};
+
+  enum session-state {
+    /// Stopped before its turn ended.
+    idle,
+    /// Claude Code is working on a turn.
+    working,
+    /// The turn ended, but Claude Code was refused a permission it asked
+    /// for. Send it more work to go on.
+    waiting,
+    /// The turn ended.
+    finished,
+    /// The turn ended with an error, or Claude Code exited without one.
+    failed,
+  }
+
+  record session {
+    /// Claude Code's session id.
+    id: string,
+    /// The folder it works in.
+    dir: string,
+    state: session-state,
+    /// The text of the last finished turn, if any. For a failed turn,
+    /// the error.
+    last-result: option<string>,
+    /// The first line of the prompt that started the session.
+    title: string,
+    /// When it started, in unix seconds.
+    started: u64,
+    /// When its state last changed, in unix seconds.
+    updated: u64,
+  }
+
+  /// Starts a session on `prompt` in `dir` and answers once Claude Code
+  /// has given it an id, while it works. `dir` outside the allowed
+  /// folders is `denied`.
+  start: async func(dir: string, prompt: string) -> result<session, call-error>;
+  /// Resumes a session that is not working with another prompt. A
+  /// working session answers `failed`.
+  send: async func(id: string, prompt: string) -> result<session, call-error>;
+  /// The sessions started since the node started.
+  %list: async func() -> result<list<session>, call-error>;
+  status: async func(id: string) -> result<session, call-error>;
+  /// Stops the session's turn, if one runs. Its state becomes `idle`.
+  stop: async func(id: string) -> result<_, call-error>;
+}

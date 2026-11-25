@@ -1,0 +1,30 @@
+name = "password-typer"
+version = "0.1.0"
+description = "Types a password saved in the Keychain into the focused field, after Touch ID."
+# Standard library interfaces the component imports. `bricolo check` fails if
+# the component imports one that is not listed here.
+imports = ["log", "hotkey", "http", "keyboard", "secrets", "shell", "timer", "ui"]
+# The built component, relative to this folder. Only `bricolo install` reads it.
+wasm = "target/wasm32-wasip2/release/password_typer.wasm"
+
+# The touch-id sidecar (../sidecar). Keep it in step with `url` below.
+[http]
+allow = ["127.0.0.1:8804"]
+
+# The dialog with a hidden field that "Set password…" opens.
+[shell]
+allow = ["/usr/bin/osascript"]
+
+# Defaults passed to init as JSON. Override them in node.toml under
+# [plugins.password-typer].
+[settings]
+# Opens the list of passwords; with one name it types that one at once.
+chord = "cmd+alt+shift+p"
+# The names of your passwords, in the order the list shows them. Each is
+# 1 to 128 letters, digits, ".", "_" or "-".
+names = ["main"]
+# Ask for Touch ID before typing or saving a password.
+touch_id = true
+url = "http://127.0.0.1:8804/authenticate"
+# How long the Touch ID prompt may stay open, in milliseconds.
+timeout_ms = 60000

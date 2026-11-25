@@ -1,0 +1,40 @@
+name: Bug report
+description: Something does not work as the docs say.
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: The smallest script, plugin or command that shows the problem.
+      render: lua
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS
+        - Linux (X11)
+        - Linux (Wayland or Hyprland)
+        - Windows
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The output of `bricolo --version`, or the commit you built.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: The relevant lines from `bricolo logs` or the hub's Logs view.
+      render: text

@@ -1,0 +1,29 @@
+/// The mouse pointer of this device. Points use the same coordinates as
+/// `window`. Moving and clicking need the Accessibility permission on
+/// macOS; without it they answer `denied`. Always runs on this node.
+interface mouse {
+  use types.{call-error};
+
+  record point {
+    x: s32,
+    y: s32,
+  }
+
+  enum button {
+    left,
+    right,
+    middle,
+  }
+
+  /// Where the pointer is.
+  position: async func() -> result<point, call-error>;
+  /// Moves the pointer without clicking.
+  move-to: async func(to: point) -> result<_, call-error>;
+  /// Clicks `button` at the pointer, `count` times in a row: 2 is a double
+  /// click. `count` is 1 to 3; anything else answers `failed`.
+  click: async func(button: button, count: u8) -> result<_, call-error>;
+  /// Scrolls by whole lines: positive `dy` scrolls down, positive `dx`
+  /// scrolls right. On Windows a line is one wheel notch, which scrolls
+  /// what the user set in Mouse settings, three lines by default.
+  scroll: async func(dx: s32, dy: s32) -> result<_, call-error>;
+}

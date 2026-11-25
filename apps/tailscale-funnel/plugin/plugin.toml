@@ -1,0 +1,20 @@
+name = "tailscale-funnel"
+version = "0.1.0"
+description = "The hub tile for the tailscale-funnel sidecar: the funnel's state, its public URL, who holds a lease, and the buttons to turn it on or off."
+# Standard library interfaces the component imports. `bricolo check` fails if
+# the component imports one that is not listed here.
+imports = ["log", "timer", "clipboard", "app", "http", "ui"]
+# The built component, relative to this folder. Only `bricolo install` reads it.
+wasm = "target/wasm32-wasip2/release/tailscale_funnel.wasm"
+
+# The tailscale-funnel sidecar. Keep it in step with `url` below.
+# 127.0.0.1 and localhost are different entries.
+[http]
+allow = ["127.0.0.1:8795"]
+
+# Defaults passed to init as JSON. Override them in node.toml under
+# [plugins.tailscale-funnel].
+[settings]
+url = "http://127.0.0.1:8795"
+poll_ms = 30000
+timeout_ms = 30000

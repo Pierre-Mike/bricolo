@@ -1,0 +1,21 @@
+/// Text to speech. Speech is queued: `speak` returns once the text is
+/// queued. The node splits long text into sentence chunks and speaks them
+/// one at a time.
+interface tts {
+  use types.{call-error};
+
+  record queue-status {
+    speaking: bool,
+    /// Chunks waiting behind the one being spoken.
+    queued: u32,
+    /// The node's default voice, if one is set.
+    voice: option<string>,
+  }
+
+  /// `voice` picks a voice or a profile from node.toml by name; none means
+  /// the node's default.
+  speak: async func(text: string, voice: option<string>) -> result<_, call-error>;
+  /// Stops the current speech and clears the queue.
+  stop: async func() -> result<_, call-error>;
+  status: async func() -> result<queue-status, call-error>;
+}

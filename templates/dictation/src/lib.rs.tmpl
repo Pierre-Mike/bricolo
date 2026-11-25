@@ -1,0 +1,164 @@
+//! __NAME__: press ctrl+alt+cmd+d to start recording, press it again to
+//! stop. The recording goes to the speech server, the text goes to the
+//! clipboard, and the `paste` chord puts it at the cursor. A recording
+//! stops by itself after `max_secs`.
+//!
+//! `domain.rs` holds the state machine, tested with `cargo test`. This
+//! file is the adapter: it turns events into domain inputs, carries out
+//! the actions the domain returns, and feeds their results back.
+//!
+//! Build:   cargo build --target wasm32-wasip2 --release
+//! Check:   bricolo check .
+//! Install: bricolo install . -y
+//! Try it:  bricolo fire __NAME__ toggle   (twice: start, then stop)
+
+// The generated `event` bindings take more than seven arguments.
+#![allow(clippy::too_many_arguments)]
+
+mod domain;
+
+use std::sync::{Mutex, OnceLock};
+
+wit_bindgen::generate!({
+    path: "__WIT__",
+    world: "bricolo:stdlib/plugin",
+});
+
+use domain::{Action, Dictation, Input, Settings};
+use bricolo::stdlib::log::{self, Level};
+use bricolo::stdlib::types::CallError;
+use bricolo::stdlib::{clipboard, hotkey, keyboard, mic, speech, timer, ui};
+
+/// The binding id. `bricolo fire __NAME__ toggle` sends it too.
+const TOGGLE: &str = "toggle";
+
+static SETTINGS: OnceLock<Settings> = OnceLock::new();
+static MACHINE: Mutex<Option<Dictation>> = Mutex::new(None);
+/// The safety stop's timer, while one runs.
+static TIMER: Mutex<Option<u64>> = Mutex::new(None);
+
+struct Plugin;
+
+impl Guest for Plugin {
+    async fn init(config: String) -> Result<(), String> {
+        let settings = SETTINGS.get_or_init(|| Settings::from_json(&config));
+        *MACHINE.lock().unwrap() = Some(Dictation::new(settings.clone()));
+        // Log a chord that fails to bind and keep running, so `bricolo fire`
+        // still reaches the plugin.
+        if let Err(e) = hotkey::bind(TOGGLE.into(), settings.chord.clone()).await {
+            log::write(Level::Warn, &format!("cannot bind {}: {e:?}", settings.chord));
+        }
+        log::write(
+            Level::Info,
+            &format!("press {} to start and stop recording", settings.chord),
+        );
+        Ok(())
+    }
+
+    async fn on_event(event: Event) {
+        let input = match event {
+            Event::Hotkey(id) if id == TOGGLE => Input::Toggle,
+            Event::Timer(id) if *TIMER.lock().unwrap() == Some(id) => {
+                TIMER.lock().unwrap().take();
+                Input::TimeUp
+            }
+            _ => return,
+        };
+        run(input).await;
+    }
+
+    async fn dispose() {
+        // The node stops this plugin's recordings and timers itself.
+    }
+}
+
+/// Hands `input` to the domain and carries out its actions, until none
+/// produces a new input.
+async fn run(input: Input) {
+    let mut next = Some(input);
+    while let Some(input) = next.take() {
+        let actions = match MACHINE.lock().unwrap().as_mut() {
+            Some(machine) => machine.handle(input),
+            None => return,
+        };
+        for action in actions {
+            if let Some(input) = execute(action).await {
+                next = Some(input);
+            }
+        }
+    }
+}
+
+fn describe(e: CallError) -> String {
+    match e {
+        CallError::Failed(msg) => msg,
+        other => format!("{other:?}"),
+    }
+}
+
+/// Carries out one action. Capability calls answer with the next input.
+async fn execute(action: Action) -> Option<Input> {
+    let settings = SETTINGS.get().cloned().unwrap_or_default();
+    match action {
+        Action::StartRecording { max_secs } => {
+            let options = mic::RecordOptions {
+                max_secs,
+                format: mic::AudioFormat::Wav16kMono,
+            };
+            Some(Input::Started(
+                mic::record_start(options).await.map_err(describe),
+            ))
+        }
+        Action::StartTimer { secs } => {
+            *TIMER.lock().unwrap() = Some(timer::after(secs.saturating_mul(1000)));
+            None
+        }
+        Action::CancelTimer => {
+            if let Some(id) = TIMER.lock().unwrap().take() {
+                timer::cancel(id);
+            }
+            None
+        }
+        Action::StopRecording(id) => Some(Input::Stopped(
+            mic::record_stop(id).await.map_err(describe),
+        )),
+        Action::Transcribe(path) => Some(Input::Transcribed(
+            speech::transcribe_file(path).await.map_err(describe),
+        )),
+        Action::Deliver(text) => {
+            log::write(Level::Info, &format!("heard: {text}"));
+            if let Err(e) = clipboard::set(text).await {
+                show(format!("cannot copy: {}", describe(e))).await;
+                return None;
+            }
+            if let Some((mods, key)) = settings.paste_keys()
+                && let Err(e) = keyboard::keystroke(mods, key).await
+            {
+                show(format!("copied; paste it yourself ({})", describe(e))).await;
+            }
+            None
+        }
+        Action::Show(text) => {
+            show(text).await;
+            None
+        }
+        Action::Log(text) => {
+            log::write(Level::Info, &text);
+            None
+        }
+    }
+}
+
+/// Logs `text` and shows it in a toast from the hub.
+async fn show(text: String) {
+    log::write(Level::Info, &text);
+    let _ = ui::show_panel(&ui::Panel {
+        kind: ui::PanelKind::Toast,
+        title: "Dictation".into(),
+        text,
+        choices: Vec::new(),
+        timeout_ms: None,
+    });
+}
+
+export!(Plugin);

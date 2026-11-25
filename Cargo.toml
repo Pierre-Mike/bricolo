@@ -1,0 +1,85 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "plugins/*", "fixtures/*"]
+# `cargo build` and `cargo test` cover the host. Plugins build for
+# wasm32-wasip2 with `just plugins`.
+default-members = ["crates/*"]
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+license = "MIT"
+rust-version = "1.99"
+
+[workspace.dependencies]
+bricolo-lua = { path = "crates/lua" }
+bricolo-mcp = { path = "crates/mcp" }
+bricolo-mesh = { path = "crates/mesh" }
+bricolo-providers = { path = "crates/providers" }
+bricolo-router = { path = "crates/router" }
+bricolo-runtime = { path = "crates/runtime" }
+
+anyhow = "1"
+async-trait = "0.1"
+bytes = "1"
+clap = { version = "4.6", features = ["derive"] }
+# gzip for plugin and script bundles, with the pure Rust backend.
+flate2 = "1"
+futures-util = "0.3"
+# The MCP gateway's random token. Already in the tree through iroh.
+getrandom = "0.3"
+# The MCP gateway's HTTP server, already in the tree through iroh and
+# reqwest. No TLS here: Tailscale Funnel or another tunnel terminates it.
+http-body-util = "0.1"
+hyper = { version = "1", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+# No `portmapper` (UPnP and NAT-PMP): it pulls in attohttpc, which is
+# MPL-2.0. Hole punching and relays still work without it.
+iroh = { version = "1.4", default-features = false, features = [
+    "fast-apple-datapath",
+    "metrics",
+    "tls-ring",
+] }
+# Lua 5.4 built from source (no system Lua). `send` makes a Lua state
+# movable across Tokio worker threads.
+mlua = { version = "0.12", features = ["lua54", "vendored", "async", "send"] }
+notify = "8"
+postcard = { version = "1", default-features = false, features = ["use-std"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+# Plugin and script bundles (`bricolo pack`). No xattr support.
+tar = { version = "0.4", default-features = false }
+tempfile = "3"
+thiserror = "2"
+tokio = { version = "1", features = ["full"] }
+toml = "1"
+# Edits node.toml for `bricolo sidecar` and keeps its comments.
+toml_edit = "0.25"
+tracing = "0.1"
+tracing-appender = "0.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# No `cache` or `profiling`: they pull in C libraries (zstd, ittapi) that
+# make cross-checking for Linux need a C toolchain.
+wasmtime = { version = "50", default-features = false, features = [
+    "addr2line",
+    "anyhow",
+    "async",
+    "component-model",
+    "component-model-async",
+    "cranelift",
+    "demangle",
+    "parallel-compilation",
+    "runtime",
+    "std",
+] }
+wasmtime-wasi = { version = "50", default-features = false, features = ["p2"] }
+wit-bindgen = "0.63"
+# Reads the standard library WIT for the MCP gateway. The version
+# wasmtime already pulls in, so nothing new is built.
+wit-parser = { version = "0.262", default-features = false, features = ["std"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true

@@ -1,0 +1,15 @@
+name = "__NAME__"
+version = "0.1.0"
+description = "Centers the focused window on its screen when you press a chord."
+# Standard library interfaces the component imports. `bricolo check` fails if
+# the component imports one that is not listed here.
+imports = ["log", "hotkey", "window"]
+# The built component, relative to this folder. Only `bricolo install` reads it.
+wasm = "__WASM__"
+
+# Defaults passed to init as JSON. Override them in node.toml under
+# [plugins.__NAME__]. On macOS, window calls need the Accessibility
+# permission for the app that runs `bricolo run`.
+[settings]
+chord = "ctrl+alt+shift+m"
+size_percent = 66

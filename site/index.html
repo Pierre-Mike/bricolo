@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>bricolo: every device you own, working as one computer</title>
+  <meta name="description" content="A personal automation node in Rust. Write a hotkey, a voice command or a widget once, and let it run on whichever of your devices does the job best.">
+  <meta property="og:title" content="bricolo">
+  <meta property="og:description" content="Every device you own, working as one computer. Lua scripts, WebAssembly plugins and a peer-to-peer mesh, in Rust.">
+  <meta property="og:image" content="screenshots/hub-home.png">
+  <meta name="theme-color" content="#1b2761">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231b2761'/%3E%3Ctext x='16' y='21' font-family='monospace' font-size='13' font-weight='700' fill='white' text-anchor='middle'%3Erh%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip" href="#idea">Skip to content</a>
+
+  <header class="top">
+    <a class="brand" href="#"><span class="mark">bricolo</span><span class="brand-name">bricolo</span></a>
+    <nav class="nav" aria-label="Sections">
+      <a href="#idea">The idea</a>
+      <a href="#how">How it works</a>
+      <a href="#build">Build</a>
+      <a href="#future">What's next</a>
+      <a class="nav-gh" href="https://github.com/Pierre-Mike/bricolo">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="hero-text">
+        <p class="eyebrow">open source · Rust · macOS, Linux, Windows</p>
+        <h1>Every device you own, working as <span class="accent">one computer</span>.</h1>
+        <p class="lede">Press a hotkey on your laptop. Your desktop's GPU turns your voice into text, and the text lands in the app you're typing in. Your scripts don't know which machine did the work. They just call it.</p>
+        <div class="ctas">
+          <a class="button" href="https://github.com/Pierre-Mike/bricolo/blob/main/docs/getting-started.md">Get started</a>
+          <a class="button ghost" href="https://github.com/Pierre-Mike/bricolo">View on GitHub</a>
+        </div>
+      </div>
+      <div class="hero-mesh" aria-hidden="true">
+        <canvas id="mesh"></canvas>
+        <p class="mesh-caption" id="mesh-caption">laptop → desktop · speech</p>
+      </div>
+    </section>
+
+    <section class="strip" aria-label="Example calls">
+      <div class="calls">
+        <code><span class="kw">bricolo</span>.speech.transcribe_file(path)</code>
+        <span class="arrow">runs on</span>
+        <code class="where">desktop · GPU</code>
+      </div>
+      <div class="calls">
+        <code><span class="kw">bricolo</span>.disk.read("~/Shared/notes.md")</code>
+        <span class="arrow">runs on</span>
+        <code class="where">home server</code>
+      </div>
+      <div class="calls">
+        <code><span class="kw">bricolo</span>.tts.speak("Build passed")</code>
+        <span class="arrow">runs on</span>
+        <code class="where">kitchen Mac</code>
+      </div>
+    </section>
+
+    <section class="idea" id="idea">
+      <div class="wrap narrow">
+        <p class="kicker">The big idea</p>
+        <h2>Your devices are islands. They don't have to be.</h2>
+        <p>Your laptop has the keyboard. Your desktop has the GPU. The home server has the disks, and the Mac in the kitchen has the speakers. Each one runs its own scripts, and none of them can borrow what the others are good at. Wiring them together means custom endpoints, hard-coded addresses, and hoping the right machine is awake.</p>
+        <p>bricolo gives every device the same small node and the same <strong>standard library</strong>. Your automations call that library and never ask where the work happens. One line of configuration decides, and the router falls back when a machine is gone.</p>
+        <p class="origin">It started as a port of a <a href="https://www.hammerspoon.org/">Hammerspoon</a> setup that had outgrown one Mac.</p>
+      </div>
+    </section>
+
+    <section class="code-pair" aria-label="A script and its routing rule">
+      <div class="wrap pair">
+        <figure class="code">
+          <figcaption>scripts/dictate.lua</figcaption>
+<pre><code><span class="c">-- press a chord to record, press it again to type what you said</span>
+<span class="k">local</span> rec
+bricolo.hotkey.bind({ <span class="s">"ctrl"</span>, <span class="s">"alt"</span>, <span class="s">"cmd"</span> }, <span class="s">"d"</span>, <span class="k">function</span>()
+  <span class="k">if not</span> rec <span class="k">then</span>
+    rec = assert(bricolo.mic.record_start())
+  <span class="k">else</span>
+    <span class="k">local</span> path = assert(bricolo.mic.record_stop(rec))
+    rec = <span class="k">nil</span>
+    <span class="k">local</span> text = assert(bricolo.speech.transcribe_file(path))
+    bricolo.keyboard.type_text(text)
+  <span class="k">end</span>
+<span class="k">end</span>)</code></pre>
+        </figure>
+        <figure class="code">
+          <figcaption>rules.toml</figcaption>
+<pre><code>[routes]
+<span class="c"># transcribe on the desktop's GPU,
+# fall back to this machine</span>
+speech = [<span class="s">"desktop"</span>, <span class="s">"local"</span>]
+
+<span class="c"># speak through the kitchen speakers</span>
+tts = [<span class="s">"kitchen-mac"</span>]</code></pre>
+          <p class="note">The script stays the same when you move speech to a new machine. Only this file changes.</p>
+        </figure>
+      </div>
+    </section>
+
+    <section class="how" id="how">
+      <div class="wrap">
+        <p class="kicker">How it works</p>
+        <h2>How a call finds the right machine</h2>
+        <ol class="steps">
+          <li>
+            <span class="num">1</span>
+            <h3>Every device runs a node</h3>
+            <p>Each node offers the same 24 capabilities, defined once in WIT and implemented natively per OS: Accessibility and CGEvent on macOS, X11, Hyprland and D-Bus on Linux, Win32 and WinRT on Windows.</p>
+          </li>
+          <li>
+            <span class="num">2</span>
+            <h3>You pair the ones you trust</h3>
+            <p><code>bricolo peer add desktop &lt;id&gt; --allow speech</code>. Each device lists exactly what the other may call, and refuses any key it doesn't know. Calls travel encrypted over iroh QUIC or Tailscale.</p>
+          </li>
+          <li>
+            <span class="num">3</span>
+            <h3>One line picks where a call runs</h3>
+            <p><code>speech = ["desktop", "local"]</code> sends speech to the desktop and falls back to this machine when the desktop is asleep.</p>
+          </li>
+        </ol>
+
+        <div class="caps" aria-label="The standard library">
+          <p class="caps-title">The standard library</p>
+          <ul>
+            <li>hotkey</li><li>clipboard</li><li>window</li><li>app</li><li>screen</li><li>selection</li>
+            <li>keyboard</li><li>mouse</li><li>mic</li><li>camera</li><li>audio</li><li>speech</li>
+            <li>tts</li><li>notify</li><li>disk</li><li>files</li><li>kv</li><li>secrets</li>
+            <li>shell</li><li>http</li><li>system</li><li>timer</li><li>log</li><li>ui</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="build" id="build">
+      <div class="wrap">
+        <p class="kicker">Build</p>
+        <h2>Three ways to make an app</h2>
+        <div class="cards">
+          <article class="card">
+            <h3>Script</h3>
+            <p class="tag">Lua 5.4 · trusted · instant</p>
+            <p>Drop a <code>.lua</code> file in <code>scripts/</code> and it runs. Save it and it reloads. The fastest way to glue things together.</p>
+            <pre><code>bricolo new-script clip --template hotkey-tool</code></pre>
+          </article>
+          <article class="card">
+            <h3>Plugin</h3>
+            <p class="tag">Rust → WebAssembly · sandboxed · portable</p>
+            <p>One <code>.wasm</code> runs on every OS. It declares the capabilities it needs, you approve them once, and it can't touch anything else.</p>
+            <pre><code>bricolo new tiler --template hotkey-tool</code></pre>
+          </article>
+          <article class="card">
+            <h3>Sidecar</h3>
+            <p class="tag">Python, Node.js or Rust · any model</p>
+            <p>A local HTTP server for the work a node can't do itself, like a speech model or OCR. The node starts it, checks it, and restarts it.</p>
+            <pre><code>bricolo new-sidecar ocr --template python</code></pre>
+          </article>
+        </div>
+
+        <div class="agent">
+          <div>
+            <h3>Or describe it, and let your agent build it</h3>
+            <p>One command teaches Claude Code, Codex, Gemini CLI, OpenCode or Cursor how to build apps for your node. Ask for <em>"OCR a part of the screen I select on ctrl+alt+shift+o and copy the text"</em>, and the agent plans it, writes it, installs it and checks that it runs. The permission model limits what a generated plugin can touch.</p>
+          </div>
+          <pre><code>bricolo skill install --agent all</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="hub" aria-label="The hub">
+      <div class="wrap hub-grid">
+        <div>
+          <p class="kicker light">The hub</p>
+          <h2>Every app, sidecar and peer in one window</h2>
+          <p>The hub shows what needs attention, your widgets, every app with its switch and shortcuts, your sidecars, your peers and their routes, and live logs. It runs in its own process, so closing it never stops an automation.</p>
+          <p>Scripts and plugins can also show floating panels: captions while you dictate, toasts, choice lists and review windows.</p>
+        </div>
+        <img src="screenshots/hub-home.png" alt="The hub's Home view, with items that need attention and widgets for battery, a world clock and a voice agent" width="1040" height="700" loading="lazy">
+      </div>
+    </section>
+
+    <section class="facts" aria-label="Highlights">
+      <div class="fact">
+        <h3>Encrypted, device to device</h3>
+        <p>Nodes pair by public key and talk over QUIC. When no direct path exists, a relay forwards packets it can't read.</p>
+      </div>
+      <div class="fact">
+        <h3>Hot reload everywhere</h3>
+        <p>Save a script or rebuild a plugin, and only that app restarts. The rest of the node keeps running.</p>
+      </div>
+      <div class="fact">
+        <h3>Installs pinned by hash</h3>
+        <p>Share apps as GitHub releases. <code>plugins.lock</code> records every sha256, and <code>bricolo update</code> shows new permissions before granting them.</p>
+      </div>
+      <div class="fact">
+        <h3>Starts at login</h3>
+        <p>A signed macOS app, and <code>bricolo service</code> to start at login through launchd, systemd or Task Scheduler.</p>
+      </div>
+    </section>
+
+    <section class="platforms" aria-label="Platform status">
+      <div class="wrap">
+        <p class="kicker">Where it runs</p>
+        <h2>Platform status</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th></th><th>macOS</th><th>Linux</th><th>Windows</th></tr></thead>
+            <tbody>
+              <tr><th>Node, scripts, plugins, mesh</th><td class="yes">Yes</td><td class="yes">Yes</td><td class="part">Compiles, CI tested</td></tr>
+              <tr><th>Desktop capabilities</th><td class="yes">Full</td><td class="yes">X11, Hyprland</td><td class="part">Written, untested on a desktop</td></tr>
+              <tr><th>Hub</th><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">Not yet</td></tr>
+              <tr><th>Start at login</th><td class="yes">launchd</td><td class="yes">systemd</td><td class="yes">Task Scheduler</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="future" id="future">
+      <div class="wrap">
+        <p class="kicker light">What's next</p>
+        <h2>Where this can go</h2>
+        <p class="intro">The design already leaves room for each of these. They're directions, not promises, and issues about them are welcome.</p>
+        <div class="future-grid">
+          <article>
+            <h3>Remote media</h3>
+            <p>The mesh already carries media streams. Next: the phone on your desk becomes the microphone or camera for the desktop.</p>
+          </article>
+          <article>
+            <h3>Automatic routing</h3>
+            <p>Let the router pick by latency, battery, load or GPU, and show its reasoning in the hub.</p>
+          </article>
+          <article>
+            <h3>Phones and small devices</h3>
+            <p>iOS and Android nodes for camera, mic and location. A Raspberry Pi as an always-on node for sensors and the home.</p>
+          </article>
+          <article>
+            <h3>Apps built on apps</h3>
+            <p>Plugins that import other plugins, so "meeting notes" builds on "dictation" and "summarize" without copying them.</p>
+          </article>
+          <article>
+            <h3>An app store for friends</h3>
+            <p>Peers already serve the plugins they run. Add signatures and a small catalog, and you can share apps with people you trust.</p>
+          </article>
+          <article>
+            <h3>A computer for AI agents</h3>
+            <p>In progress: <code>bricolo mcp</code> serves the library to agents over MCP, so an agent can hear you on the laptop, think on the GPU box and speak in the kitchen, inside the same permissions.</p>
+          </article>
+        </div>
+        <p class="more"><a href="https://github.com/Pierre-Mike/bricolo/blob/main/docs/vision.md">Read the full vision →</a></p>
+      </div>
+    </section>
+
+    <section class="start" id="start">
+      <div class="wrap narrow">
+        <h2>Try it in four commands</h2>
+        <div class="terminal">
+          <button class="copy" type="button" data-copy="start-cmds">Copy</button>
+<pre id="start-cmds"><code>git clone https://github.com/Pierre-Mike/bricolo.git && cd bricolo
+cargo install --path crates/node
+bricolo run &
+bricolo new-script clip --template hotkey-tool</code></pre>
+        </div>
+        <p>Press <kbd>ctrl</kbd>+<kbd>alt</kbd>+<kbd>cmd</kbd>+<kbd>c</kbd> and the clipboard shows up in a notification. Open the script, change it, save, and it reloads.</p>
+        <div class="ctas center">
+          <a class="button" href="https://github.com/Pierre-Mike/bricolo/blob/main/docs/getting-started.md">Read the guide</a>
+          <a class="button ghost dark" href="https://github.com/Pierre-Mike/bricolo/issues/new/choose">Share an idea</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <p>bricolo is MIT licensed and written in Rust. It is an independent project, not affiliated with Hammerspoon.</p>
+    <p><a href="https://github.com/Pierre-Mike/bricolo">GitHub</a> · <a href="https://github.com/Pierre-Mike/bricolo/tree/main/docs">Docs</a> · <a href="https://github.com/Pierre-Mike/bricolo/blob/main/LICENSE">License</a></p>
+  </footer>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

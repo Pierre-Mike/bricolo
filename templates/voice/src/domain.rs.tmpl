@@ -1,0 +1,93 @@
+//! The logic, with no capability calls and no generated bindings, so
+//! `cargo test` runs it natively.
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Settings {
+    pub folder: String,
+    pub chord: String,
+    pub stop_chord: String,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            folder: "~/Recordings".into(),
+            chord: "ctrl+alt+shift+t".into(),
+            stop_chord: "ctrl+alt+shift+x".into(),
+        }
+    }
+}
+
+impl Settings {
+    /// Reads the settings JSON from `init`. Missing values keep their
+    /// defaults.
+    pub fn from_json(config: &str) -> Self {
+        let mut settings = Self::default();
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(config) else {
+            return settings;
+        };
+        let text = |key: &str| value[key].as_str().map(String::from);
+        if let Some(folder) = text("folder") {
+            settings.folder = folder;
+        }
+        if let Some(chord) = text("chord") {
+            settings.chord = chord;
+        }
+        if let Some(chord) = text("stop_chord") {
+            settings.stop_chord = chord;
+        }
+        settings
+    }
+}
+
+const AUDIO: [&str; 6] = ["wav", "m4a", "mp3", "flac", "ogg", "aiff"];
+
+/// The audio file that sorts last by name. Recorders that put the date in
+/// the name make that the newest one.
+pub fn newest_audio(names: &[String]) -> Option<&str> {
+    names
+        .iter()
+        .map(String::as_str)
+        .filter(|name| {
+            name.rsplit_once('.')
+                .is_some_and(|(_, ext)| AUDIO.contains(&ext.to_ascii_lowercase().as_str()))
+        })
+        .max()
+}
+
+pub fn join(folder: &str, name: &str) -> String {
+    format!("{}/{name}", folder.trim_end_matches('/'))
+}
+
+/// What to say once a transcription is done.
+pub fn summary(text: &str) -> String {
+    match text.split_whitespace().count() {
+        0 => "I heard nothing".into(),
+        1 => "Transcribed one word".into(),
+        n => format!("Transcribed {n} words"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn names(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn picks_the_last_audio_file_by_name() {
+        let found = names(&["2026-01-02.wav", "2026-01-03.M4A", "notes.txt", "z.txt"]);
+        assert_eq!(newest_audio(&found), Some("2026-01-03.M4A"));
+        assert_eq!(newest_audio(&names(&["a.txt", "wav"])), None);
+    }
+
+    #[test]
+    fn joins_and_summarises() {
+        assert_eq!(join("~/Recordings/", "a.wav"), "~/Recordings/a.wav");
+        assert_eq!(summary(" "), "I heard nothing");
+        assert_eq!(summary("hello"), "Transcribed one word");
+        assert_eq!(summary("hello big world"), "Transcribed 3 words");
+    }
+}

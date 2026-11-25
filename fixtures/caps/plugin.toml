@@ -1,0 +1,13 @@
+# Test fixture. Tests write their own plugin.toml with the allow lists they
+# need; this one serves `bricolo install fixtures/caps` for a manual smoke test.
+name = "caps"
+version = "0.1.0"
+imports = ["log", "clipboard", "window", "app", "notify", "tts", "hotkey", "shell", "http", "ui", "mic", "speech", "audio", "system", "files", "mouse", "screen", "selection", "camera", "secrets"]
+description = "Calls the desktop, tts, shell, http, ui, mic, audio, system, files, mouse, screen, selection, camera and secrets capabilities when a hotkey event tells it to."
+wasm = "../../target/wasm32-wasip2/release/caps.wasm"
+
+[shell]
+allow = ["/bin/echo"]
+
+[http]
+allow = ["127.0.0.1:8765"]

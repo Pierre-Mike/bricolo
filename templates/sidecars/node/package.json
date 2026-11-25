@@ -1,0 +1,11 @@
+{
+  "name": "__NAME__",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A sidecar for bricolo.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test"
+  }
+}

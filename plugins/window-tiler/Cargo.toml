@@ -1,0 +1,13 @@
+[package]
+name = "window-tiler"
+description = "Tiles the focused window: cmd+alt+left and right for halves, cmd+alt+up to fill."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen.workspace = true
