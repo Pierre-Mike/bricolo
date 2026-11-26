@@ -223,7 +223,7 @@ pub async fn follow(socket: &Path, on: impl FnMut(NodeEvent)) {
 
 /// The requests the hub may send. Anything else from the webview is
 /// refused, so a bug in the page cannot reach `call`.
-pub const ALLOWED: [&str; 15] = [
+pub const ALLOWED: [&str; 16] = [
     "status",
     "reload",
     "reload-script",
@@ -238,6 +238,8 @@ pub const ALLOWED: [&str; 15] = [
     "library",
     "permissions",
     "open-settings",
+    // Home's Restart node, for a grant the node sees only after a restart.
+    "restart-node",
     // An app's Settings tab: read [settings], write [plugins.<name>] in
     // node.toml.
     "settings",
@@ -280,6 +282,7 @@ mod pure_tests {
         assert!(allowed(&json!({ "cmd": "disable", "plugin": "p" })).is_ok());
         assert!(allowed(&json!({ "cmd": "library" })).is_ok());
         assert!(allowed(&json!({ "cmd": "open-settings", "grant": "camera" })).is_ok());
+        assert!(allowed(&json!({ "cmd": "restart-node" })).is_ok());
         assert!(allowed(&json!({ "cmd": "set-settings", "plugin": "p", "values": {} })).is_ok());
         assert!(allowed(&json!({ "cmd": "call", "capability": "disk" })).is_err());
         assert!(allowed(&json!({ "plugin": "p" })).is_err());

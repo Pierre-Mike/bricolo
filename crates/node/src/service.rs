@@ -262,6 +262,9 @@ pub enum OnFail {
     Ignore,
     /// Try again up to this many times, half a second apart, then stop.
     Retry(u8),
+    /// Run it again while it succeeds, up to this many times, half a second
+    /// apart: a wait for something to go away. Never stops the plan.
+    UntilFails(u8),
 }
 
 fn run(argv: &[&str], on_fail: OnFail) -> Step {
@@ -765,11 +768,15 @@ pub fn stop_plan(init: Init) -> Vec<Step> {
     match init {
         // Unloading keeps launchd from starting it again; the file stays,
         // so it starts at the next login.
+        // `bootout` returns before launchd has torn the job down, and a
+        // `start` right after it fails to bootstrap (error 5), so wait until
+        // launchd no longer knows the job, up to 10 s.
         Init::Launchd { uid } => {
-            vec![run(
-                &["launchctl", "bootout", &service(uid, LABEL)],
-                OnFail::Stop,
-            )]
+            let service = service(uid, LABEL);
+            vec![
+                run(&["launchctl", "bootout", &service], OnFail::Stop),
+                run(&["launchctl", "print", &service], OnFail::UntilFails(20)),
+            ]
         }
         Init::Systemd => vec![run(&["systemctl", "--user", "stop", UNIT], OnFail::Stop)],
         // Ends the task's processes; the task stays, so it starts at the
@@ -865,6 +872,20 @@ pub fn apply(
                 let line = argv.join(" ");
                 if dry_run {
                     writeln!(out, "would run: {line}")?;
+                    continue;
+                }
+                if let OnFail::UntilFails(n) = on_fail {
+                    for attempt in 0..=*n {
+                        if attempt > 0 {
+                            runner.pause();
+                        }
+                        let ran = runner
+                            .run(argv)
+                            .with_context(|| format!("cannot run {}", argv[0]))?;
+                        if !ran.ok {
+                            break;
+                        }
+                    }
                     continue;
                 }
                 writeln!(out, "run: {line}")?;
@@ -1382,6 +1403,25 @@ mod tests {
         assert_eq!(
             stop_plan(Init::Systemd),
             [run(&["systemctl", "--user", "stop", UNIT], OnFail::Stop)]
+        );
+    }
+
+    #[test]
+    fn stop_waits_until_launchd_forgets_the_job() {
+        let print = format!("launchctl print gui/501/{LABEL}");
+        // launchd still knows it: ask again, 20 more times at most.
+        let mut fake = Fake::default();
+        apply(&stop_plan(MAC), &mut fake, &mut Vec::new(), false).unwrap();
+        assert_eq!(fake.calls.iter().filter(|c| **c == print).count(), 21);
+        // Gone at once: one look, and the plan still succeeds.
+        let mut fake = Fake {
+            fail: vec!["launchctl print"],
+            ..Fake::default()
+        };
+        apply(&stop_plan(MAC), &mut fake, &mut Vec::new(), false).unwrap();
+        assert_eq!(
+            fake.calls,
+            [format!("launchctl bootout gui/501/{LABEL}"), print]
         );
     }
 

@@ -331,7 +331,8 @@
     { name: "input_monitoring", label: "Input Monitoring", state: "missing" },
     { name: "microphone", label: "Microphone", state: "granted" },
     { name: "camera", label: "Camera", state: "not-asked" },
-    { name: "screen_recording", label: "Screen Recording", state: "granted" },
+    // Turned on while the node ran: it needs a restart to see it.
+    { name: "screen_recording", label: "Screen Recording", state: "restart" },
   ];
 
   // catalog.rs ENTRIES: name, needs, note; summary is the first sentence

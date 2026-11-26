@@ -524,7 +524,8 @@ code,
 
 .badge.starting,
 .badge.restarting,
-.badge.connecting {
+.badge.connecting,
+.badge.grant-restart {
   background: color-mix(in srgb, var(--warn) 16%, transparent);
   color: var(--warn-text);
 }

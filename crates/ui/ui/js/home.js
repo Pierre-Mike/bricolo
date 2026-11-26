@@ -20,6 +20,25 @@ async function refreshLibrary() {
   }
 }
 
+// A grant macOS holds for the node but shows it only from its next start:
+// the node runs its program again, and Home asks again once it is back.
+export async function restartNode() {
+  await actions.quietly({ cmd: "restart-node" });
+  setTimeout(refreshLibrary, 3000);
+}
+
+function restartButton(primary) {
+  return h(
+    "button",
+    {
+      class: `btn sm${primary ? " primary" : ""}`,
+      title: "macOS shows this grant to the node only from its next start",
+      onclick: restartNode,
+    },
+    "Restart node",
+  );
+}
+
 // Each grant the node lacks that a running plugin's capabilities need.
 // Scripts get every capability, so they would flag every grant; they are
 // left out.
@@ -28,14 +47,14 @@ function missingGrants() {
   const running = new Set(apps().filter((a) => a.kind === "plugin" && a.item.state === "running").map((a) => a.item.name));
   const out = [];
   for (const g of library.grants ?? []) {
-    if (g.state !== "missing" && g.state !== "not-asked") continue;
+    if (g.state !== "missing" && g.state !== "not-asked" && g.state !== "restart") continue;
     const users = new Set();
     for (const c of library.capabilities ?? []) {
       const needs = Array.isArray(c.needs) ? c.needs : [c.needs];
       if (!needs.includes(g.name)) continue;
       for (const p of c.plugins ?? []) if (running.has(p)) users.add(p);
     }
-    if (users.size) out.push({ grant: g.name, label: g.label ?? g.name, plugins: [...users] });
+    if (users.size) out.push({ grant: g.name, label: g.label ?? g.name, state: g.state, plugins: [...users] });
   }
   return out;
 }
@@ -67,6 +86,16 @@ function problems() {
   }
   for (const g of missingGrants()) {
     const who = g.plugins.join(", ");
+    if (g.state === "restart") {
+      out.push({
+        level: "warn",
+        who: g.label,
+        what: `granted; the node sees it after a restart, and ${who} may need it`,
+        fix: restartButton(false),
+        open: () => actions.go("library"),
+      });
+      continue;
+    }
     out.push({
       level: "warn",
       who: g.label,
@@ -111,10 +140,11 @@ function usersOf(grant) {
 function renderSetup() {
   if (!library || library.os !== "macos" || prefs.setupDone) return null;
   const grants = library.grants ?? [];
-  const open = grants.filter((g) => g.state === "missing" || g.state === "not-asked");
+  const open = grants.filter((g) => g.state === "missing" || g.state === "not-asked" || g.state === "restart");
   if (!open.length) return null;
   const steps = grants.map((g, i) => {
     const done = g.state === "granted";
+    const restart = g.state === "restart";
     const users = usersOf(g.name);
     return h(
       "li",
@@ -123,13 +153,15 @@ function renderSetup() {
       h(
         "div",
         { class: "grow" },
-        h("div", {}, h("b", {}, g.label), done ? h("span", { class: "setup-state" }, "granted") : null),
+        h("div", {}, h("b", {}, g.label), done ? h("span", { class: "setup-state" }, "granted") : restart ? h("span", { class: "setup-state" }, "granted, restart the node to use it") : null),
         h("div", { class: "meta" }, WHY[g.name] ?? ""),
         users.length ? h("div", { class: "meta setup-users" }, `Used by ${users.join(", ")}`) : null,
       ),
       done
         ? null
-        : h(
+        : restart
+          ? h("div", { class: "setup-actions" }, restartButton(true))
+          : h(
             "div",
             { class: "setup-actions" },
             h(

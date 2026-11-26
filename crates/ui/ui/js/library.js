@@ -11,7 +11,7 @@ import { actions, prefs, savePrefs } from "./store.js";
 const SENSOR_GRANT = { mic: "microphone", camera: "camera", screen: "screen_recording" };
 
 // Grant state to the hub's dot colours; "not asked" stays grey.
-const DOT = { granted: "ok", missing: "err" };
+const DOT = { granted: "ok", missing: "err", restart: "warn" };
 
 const state = {
   answer: null,
@@ -118,7 +118,20 @@ function renderGrants() {
   const rows = a.grants.map((g) => {
     const users = used.get(g.name) ?? [];
     let action;
-    if (g.state === "granted") {
+    if (g.state === "restart") {
+      action = h(
+        "button",
+        {
+          class: "btn primary sm",
+          title: "macOS shows this grant to the node only from its next start",
+          onclick: async () => {
+            await deps.send({ cmd: "restart-node" });
+            setTimeout(refresh, 3000);
+          },
+        },
+        "Restart node",
+      );
+    } else if (g.state === "granted") {
       action = h(
         "button",
         {
@@ -182,7 +195,7 @@ function renderGrants() {
 }
 
 function stateText(s) {
-  return { granted: "granted", missing: "missing", "not-asked": "not asked" }[s] ?? s;
+  return { granted: "granted", missing: "missing", "not-asked": "not asked", restart: "needs a restart" }[s] ?? s;
 }
 
 function renderCapabilities() {
@@ -202,7 +215,7 @@ function renderCapabilities() {
   );
   return [note, ...caps.map((c) => {
     const grant = c.needs ? grants[c.needs] : null;
-    const missing = grant && (grant.state === "missing" || grant.state === "not-asked");
+    const missing = grant && (grant.state === "missing" || grant.state === "not-asked" || grant.state === "restart");
     const users = [
       scripts.length ? h("span", { class: "chip-static" }, `all scripts (${scripts.length})`) : null,
       ...c.plugins.map((p) =>

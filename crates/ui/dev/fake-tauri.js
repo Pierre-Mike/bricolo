@@ -607,6 +607,11 @@
         return permissions();
       }
 
+      case "restart-node":
+        // The node starts again and sees what macOS gave it meanwhile.
+        for (const g of grants) if (g.state === "restart") g.state = "granted";
+        return { restarting: true };
+
       case "open-settings": {
         const g = grants.find((x) => x.name === req.grant);
         if (!g) return { error: `no grant named ${req.grant}; use one of ${grants.map((x) => x.name).join(", ")}` };
@@ -634,7 +639,7 @@
   // The commands bricolo-ui registers
 
   // crates/ui/src/client.rs ALLOWED: what a page may send.
-  const ALLOWED = new Set(["status", "reload", "reload-script", "enable", "disable", "restart-sidecar", "ui-action", "fire", "set-hotkey", "library", "permissions", "open-settings", "settings", "set-settings", "mcp-connect"]);
+  const ALLOWED = new Set(["status", "reload", "reload-script", "enable", "disable", "restart-sidecar", "ui-action", "fire", "set-hotkey", "library", "permissions", "open-settings", "restart-node", "settings", "set-settings", "mcp-connect"]);
 
   function panelFor(kind) {
     const f = F.panels[kind];

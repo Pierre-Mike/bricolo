@@ -24,7 +24,9 @@
 //! `{"cmd":"ui-action","action":{"kind":"switch","owner":"p","id":"x",
 //! "on":true}}` hands a tile or panel interaction to its owner;
 //! `{"cmd":"sensor","owner":"p","sensor":"mic","active":true}` marks a
-//! sensor in use by hand, to test the recording dot. `{"cmd":"subscribe"}`
+//! sensor in use by hand, to test the recording dot. `{"cmd":"restart-node"}`
+//! stops the node and starts its program again in the same process, so
+//! macOS answers the grants afresh. `{"cmd":"subscribe"}`
 //! turns the connection into a stream of events (see `subscribe.rs`).
 
 use std::process::ExitCode;
@@ -106,6 +108,9 @@ pub enum Request {
     OpenSettings {
         grant: String,
     },
+    /// Stops the node and runs its program again in the same process (Unix
+    /// only), for a grant that macOS shows a process only at its start.
+    RestartNode,
     /// Delivers `hotkey(<id>)` to a plugin, as if the chord was pressed.
     Fire {
         plugin: String,
@@ -187,6 +192,11 @@ pub struct Node {
     state: tokio::sync::Mutex<NodeState>,
     /// `rules.toml` as the router read it at start, for the hub.
     rules: Rules,
+    /// Woken by `restart-node`; `run_node` then stops and asks for a restart.
+    pub restart: tokio::sync::Notify,
+    /// The last grants a new process read, and when, so the Library view
+    /// probes at most every few seconds.
+    probed: std::sync::Mutex<Option<(std::time::Instant, permissions::Permissions)>>,
 }
 
 /// How [`Node::start`] runs. The default is what tests want: no watcher,
@@ -230,6 +240,8 @@ impl Node {
                 changed: watch::channel(0).0,
                 state: tokio::sync::Mutex::new(state),
                 rules,
+                restart: tokio::sync::Notify::new(),
+                probed: std::sync::Mutex::new(None),
             }),
             Err(e) => {
                 if let Some(mesh) = &mesh {
@@ -368,14 +380,51 @@ impl Node {
             .collect();
         let exe = std::env::current_exe().unwrap_or_default();
         let term = std::env::var("TERM_PROGRAM").ok();
+        let held = permissions::check();
+        let fresh = self.probe(&held).await;
         library::answer(&library::Facts {
             capabilities: bricolo_providers::catalog::capabilities(),
-            held: permissions::check(),
+            held,
+            fresh,
             not_asked: permissions::not_asked(),
             holder: library::holder(&exe, term.as_deref()),
             plugin_grants,
             scripts,
         })
+    }
+
+    /// What a new process of this program reads, when `held` lacks a grant
+    /// macOS answers only once per process: posting events, Input
+    /// Monitoring, Screen Recording. Runs `bricolo permissions --local`,
+    /// which macOS attributes to the same app, at most every 5 s.
+    async fn probe(&self, held: &permissions::Permissions) -> Option<permissions::Permissions> {
+        let cached = [
+            held.post_events,
+            held.input_monitoring,
+            held.screen_recording,
+        ];
+        if cfg!(test) || !cached.contains(&Some(false)) {
+            return None;
+        }
+        if let Some((at, seen)) = *self.probed.lock().unwrap()
+            && at.elapsed() < Duration::from_secs(5)
+        {
+            return Some(seen);
+        }
+        let exe = std::env::current_exe().ok()?;
+        let run = tokio::process::Command::new(exe)
+            .args(["permissions", "--local"])
+            .stdin(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .kill_on_drop(true)
+            .output();
+        let out = tokio::time::timeout(Duration::from_secs(5), run)
+            .await
+            .ok()?
+            .ok()?;
+        let seen: permissions::Permissions = serde_json::from_slice(&out.stdout).ok()?;
+        *self.probed.lock().unwrap() = Some((std::time::Instant::now(), seen));
+        Some(seen)
     }
 
     fn bump(&self) {
@@ -588,6 +637,14 @@ pub async fn handle(node: &Node, line: &str) -> Value {
             json!({ "permissions": held, "complete": held.complete(), "used_by": used_by })
         }
         Ok(Request::Library) => node.library().await,
+        Ok(Request::RestartNode) => {
+            if cfg!(unix) {
+                node.restart.notify_one();
+                json!({ "restarting": true })
+            } else {
+                json!({ "error": "restart-node works on macOS and Linux; restart the bricolo task instead" })
+            }
+        }
         Ok(Request::OpenSettings { grant }) => {
             if cfg!(test) {
                 // Tests never open System Settings.
@@ -735,10 +792,19 @@ fn error_name(e: &CallError) -> &'static str {
     }
 }
 
+/// How `run_node` ended.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Ended {
+    /// A signal stopped it.
+    Stopped,
+    /// `restart-node` asked for the program to run again.
+    Restart,
+}
+
 /// Runs the node until Ctrl+C or SIGTERM (on Windows: Ctrl+C, Ctrl+Break,
-/// or the console closing, logoff or shutdown), then disposes every script and
-/// plugin, stops the sidecars and closes the mesh.
-pub async fn run_node(paths: Paths, desktop: Option<Desktop>) -> Result<()> {
+/// or the console closing, logoff or shutdown) or `restart-node`, then
+/// disposes every script and plugin, stops the sidecars and closes the mesh.
+pub async fn run_node(paths: Paths, desktop: Option<Desktop>) -> Result<Ended> {
     let _guard = crate::logs::init(&paths)?;
     for dir in [paths.plugins_dir(), paths.scripts_dir(), paths.data.clone()] {
         std::fs::create_dir_all(&dir)
@@ -773,12 +839,19 @@ pub async fn run_node(paths: Paths, desktop: Option<Desktop>) -> Result<()> {
         );
     }
     let server = tokio::spawn(imp::serve(listener, node.clone()));
-    imp::shutdown_signal().await;
-    tracing::info!("stopping");
+    let ended = tokio::select! {
+        () = imp::shutdown_signal() => Ended::Stopped,
+        () = node.restart.notified() => {
+            // Let the answer to `restart-node` reach the hub first.
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            Ended::Restart
+        }
+    };
+    tracing::info!(?ended, "stopping");
     node.shutdown().await;
     server.abort();
     imp::remove(&paths);
-    Ok(())
+    Ok(ended)
 }
 
 /// Prints the running node's status, or `{"running": false}` and exits 2.
@@ -1222,6 +1295,10 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<Request>(r#"{"cmd":"library"}"#).unwrap(),
             Request::Library
+        );
+        assert_eq!(
+            serde_json::from_str::<Request>(r#"{"cmd":"restart-node"}"#).unwrap(),
+            Request::RestartNode
         );
         assert_eq!(
             serde_json::from_str::<Request>(r#"{"cmd":"open-settings","grant":"camera"}"#).unwrap(),

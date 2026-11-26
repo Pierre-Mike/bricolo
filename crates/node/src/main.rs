@@ -54,6 +54,10 @@ enum Command {
         /// Settings and prompts once) and open the settings to turn it on.
         #[arg(long)]
         request: bool,
+        /// Print what this new process reads itself, without asking the
+        /// node. The node runs it to see grants given after it started.
+        #[arg(long, hide = true, conflicts_with = "request")]
+        local: bool,
     },
     /// Create a plugin crate in <dir>/<name> from a template.
     New {
@@ -241,6 +245,25 @@ fn main() -> ExitCode {
     }
 }
 
+/// Replaces this process with a new run of the same program and
+/// arguments, after `restart-node`. The pid stays, so launchd, systemd or
+/// the hub that started the node keep watching it, and macOS answers the
+/// grants afresh.
+#[cfg(unix)]
+fn restart_in_place() -> Result<()> {
+    use std::os::unix::process::CommandExt;
+    let exe = std::env::current_exe().context("cannot find this program")?;
+    let err = std::process::Command::new(&exe)
+        .args(std::env::args_os().skip(1))
+        .exec();
+    Err(err).with_context(|| format!("cannot run {} again", exe.display()))
+}
+
+#[cfg(not(unix))]
+fn restart_in_place() -> Result<()> {
+    anyhow::bail!("restart-node works on macOS and Linux")
+}
+
 fn run(command: Command) -> Result<ExitCode> {
     let paths = paths()?;
     let runtime = || {
@@ -252,15 +275,26 @@ fn run(command: Command) -> Result<ExitCode> {
     match command {
         // The main thread runs the OS event loop (macOS); the node and
         // Tokio run on another thread.
-        Command::Run => bricolo_providers::desktop::run(move |desktop| {
-            runtime()?.block_on(control::run_node(paths, desktop))
-        })?,
+        Command::Run => {
+            let ended = bricolo_providers::desktop::run(move |desktop| {
+                runtime()?.block_on(control::run_node(paths, desktop))
+            })?;
+            if ended == control::Ended::Restart {
+                restart_in_place()?;
+            }
+        }
         Command::Status => return runtime()?.block_on(control::status(&paths)),
         Command::Fire { plugin, id } => {
             let request = json!({ "cmd": "fire", "plugin": plugin, "hotkey": id });
             return runtime()?.block_on(control::send(&paths, request));
         }
-        Command::Permissions { request } => {
+        Command::Permissions { local: true, .. } => {
+            println!(
+                "{}",
+                serde_json::to_string(&bricolo_providers::permissions::check())?
+            );
+        }
+        Command::Permissions { request, .. } => {
             return runtime()?.block_on(control::permissions(&paths, request));
         }
         Command::New { list: true, .. } => scaffold::print_templates(scaffold::PLUGIN_TEMPLATES),

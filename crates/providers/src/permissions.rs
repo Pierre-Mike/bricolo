@@ -4,9 +4,10 @@
 //! needs Camera and `screen` needs Screen Recording. Elsewhere none apply,
 //! and each answer is `None`.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Permissions {
     /// `window`: the Accessibility API.
     pub accessibility: Option<bool>,
