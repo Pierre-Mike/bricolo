@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.12"
+# dependencies = ["mlx-vlm>=0.7.6,<0.8", "pillow>=12", "pypdfium2>=5"]
+# ///
 # Local OCR server — OvisOCR2 on mlx-vlm, behind apps/ovis_ocr.
 #
 #   GET  /                         -> drop page: send a file, get the Markdown back

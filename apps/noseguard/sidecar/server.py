@@ -2,10 +2,10 @@
 """noseguard: the nose-touch watcher's daemon keeper, a sidecar for
 bricolo.
 
-Runs the camera daemon in daemon/ (noseguard.py, with the venv python in
-$NOSEGUARD_PYTHON) as a child process through run_daemon.py, which sends the
-daemon's touch, ready and error events down a pipe instead of opening
-hammerspoon:// URLs. On a touch it does what the Hammerspoon plugin did: a
+Runs the camera daemon in daemon/ (noseguard.py) as a child process through
+run_daemon.py, under `uv run --script` (or the python in $NOSEGUARD_PYTHON).
+run_daemon.py sends the daemon's touch, ready and error events down a pipe
+instead of opening hammerspoon:// URLs. On a touch it does what the Hammerspoon plugin did: a
 red flash through daemon/overlay/overlay (hidden from screen sharing) and the
 Sosumi alarm twice, and it counts. The noseguard script
 (apps/noseguard/plugin) owns the widget and the settings. Standard library
@@ -26,11 +26,13 @@ only; the camera opens only between /start and /stop.
 
 Errors answer 4xx or 5xx with the reason as the body. The port is 8802, or
 $SIDECAR_PORT; $NOSEGUARD_DIR moves the daemon's folder and
-$NOSEGUARD_PYTHON its python.
+$NOSEGUARD_PYTHON a python to use instead of uv, and $NOSEGUARD_UV the uv to
+use (default: uv on PATH, else ~/.local/bin/uv).
 """
 
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -42,8 +44,22 @@ HOST = "127.0.0.1"
 PORT = int(os.environ.get("SIDECAR_PORT", "8802"))
 NOSEGUARD_DIR = os.path.expanduser(
     os.environ.get("NOSEGUARD_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "daemon")))
-PYTHON = os.environ.get("NOSEGUARD_PYTHON", os.path.join(NOSEGUARD_DIR, ".venv/bin/python"))
 RUNNER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "run_daemon.py")
+
+
+def daemon_command(env):
+    """How to run run_daemon.py: under the python in $NOSEGUARD_PYTHON, or
+    under uv, which builds and caches the venv its script block names. The
+    node starts sidecars with a short PATH, so uv falls back to where its
+    installer puts it."""
+    if env.get("NOSEGUARD_PYTHON"):
+        return [env["NOSEGUARD_PYTHON"], RUNNER]
+    uv = env.get("NOSEGUARD_UV") or shutil.which("uv", path=env.get("PATH")) \
+        or os.path.expanduser("~/.local/bin/uv")
+    return [uv, "run", "--script", RUNNER]
+
+
+DAEMON = daemon_command(os.environ)
 OVERLAY = os.path.join(NOSEGUARD_DIR, "overlay/overlay")
 AFPLAY = "/usr/bin/afplay"
 # hs.sound.getByName("Sosumi") at its default volume, twice, 0.35 s apart.
@@ -169,11 +185,11 @@ class Guard:
             env = child_env(settings, os.environ)
             env["NG_EVENT_FD"] = str(w)
             try:
-                child = self.spawn([PYTHON, RUNNER], env=env, cwd=NOSEGUARD_DIR,
+                child = self.spawn(DAEMON, env=env, cwd=NOSEGUARD_DIR,
                                    stdin=subprocess.DEVNULL, pass_fds=(w,))
             except OSError as e:
                 os.close(r)
-                self.last_error = f"cannot start {PYTHON}: {e}"
+                self.last_error = f"cannot start {DAEMON[0]}: {e}"
                 raise
             finally:
                 os.close(w)
@@ -245,11 +261,11 @@ class Guard:
             self.count = 0
 
     def cameras(self):
-        r = self.run([PYTHON, os.path.join(NOSEGUARD_DIR, "noseguard.py"), "list"],
+        r = self.run(DAEMON + ["list"],
                      cwd=NOSEGUARD_DIR, capture_output=True, text=True,
                      timeout=LIST_TIMEOUT_S, stdin=subprocess.DEVNULL)
         if r.returncode != 0:
-            raise ValueError(f"noseguard.py list failed: {r.stderr.strip()[-300:]}")
+            raise ValueError(f"run_daemon.py list failed: {r.stderr.strip()[-300:]}")
         return parse_cameras(r.stdout)
 
     def status(self):

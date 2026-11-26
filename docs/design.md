@@ -541,8 +541,8 @@ allow = ["api.example.com:443", "127.0.0.1:8765"]   # lowercase host:port
 
 ```toml
 [sidecars.parakeet]
-command = "~/.local/share/uv/tools/parakeet-mlx/bin/python"
-args = ["~/.hammerspoon/parakeet_server.py"]
+command = "~/.local/bin/uv"
+args = ["run", "--script", "/path/to/bricolo/apps/shared/sidecars/parakeet/server.py"]
 cwd = "~"                                      # optional
 port = 8765
 health_url = "http://127.0.0.1:8765/health"   # optional, this is the default
@@ -550,8 +550,8 @@ startup_secs = 180                             # optional, default 120
 env = { STT_ENGINE = "parakeet", STT_MODEL = "…", STT_PORT = "8765" }
 
 [sidecars.pocket-en]
-command = "~/.hammerspoon/.venv-tts/bin/python"
-args = ["~/.hammerspoon/pocket_tts_server.py"]
+command = "~/.local/bin/uv"
+args = ["run", "--script", "/path/to/bricolo/apps/shared/sidecars/pocket-tts/server.py"]
 port = 8791
 env = { POCKET_TTS_PORT = "8791", POCKET_TTS_VOICE = "alba" }
 

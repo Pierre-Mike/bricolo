@@ -93,6 +93,7 @@ Tools: `just`, `cargo-nextest`, `cargo-deny` and `lefthook`. Run `lefthook insta
 - The hub's front end (`crates/ui/ui/`) is plain HTML, CSS and ES modules with no build step and no external URLs. It builds DOM nodes with `h()` from `js/dom.js` and sets text with `textContent`, never `innerHTML`, because tiles and panels carry plugin strings.
 - `node.toml` sections (`[sidecars.<name>]`, `[tts]`, `[speech]`) and the `plugin.toml` allow lists (`[shell]`, `[http]`) are documented in the phase 2 implementation notes of docs/design.md; `[mesh]` is in docs/mesh.md.
 - Tests never run `launchctl`, `systemctl` or `schtasks`: `service.rs` builds plans and the tests carry them out with a fake `Runner` in a temp folder.
+- The repository is public. Write home paths as `/Users/me` (or `/home/me`, `C:/Users/Ada`) and paths into this repository as `/path/to/bricolo`, never a real user's folder or `~/.hammerspoon`. A Python sidecar names its packages in an inline `# /// script` block and runs with `uv run --script`, so it never depends on a venv built by hand. `crates/node/tests/public_repo.rs` checks both.
 - Tests never touch the real home folder. Point `BRICOLO_CONFIG_DIR` and `BRICOLO_DATA_DIR` at a temp folder.
 - Install tests never reach GitHub: they serve a fake API from `crates/runtime/tests/support/fake_github.rs` and point `BRICOLO_GITHUB_API` (or `GitHub::new`) at it.
 - A template change must keep `just smoke-templates` passing: every template builds outside the repo, passes `bricolo check` and runs.

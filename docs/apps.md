@@ -166,13 +166,13 @@ Errors at any step show a toast and go back to idle. Panels need `bricolo-ui` ru
 
 ### Set up speech
 
-`speech` needs a server with parakeet's HTTP contract. The Hammerspoon setup's `parakeet_server.py` is one. Run it as a sidecar, which the node starts, watches and stops:
+`speech` needs a server with parakeet's HTTP contract. [`apps/shared/sidecars/parakeet`](../apps/shared/sidecars/parakeet/README.md) is one. Run it as a sidecar, which the node starts, watches and stops:
 
 ```toml
 # ~/.config/bricolo/node.toml
 [sidecars.parakeet]
-command = "~/.local/share/uv/tools/parakeet-mlx/bin/python"
-args = ["~/GitHub/hammerspoon/parakeet_server.py"]
+command = "~/.local/bin/uv"
+args = ["run", "--script", "/path/to/bricolo/apps/shared/sidecars/parakeet/server.py"]
 port = 8765
 startup_secs = 180
 env = { STT_ENGINE = "parakeet", STT_MODEL_ID = "mlx-community/parakeet-tdt-0.6b-v3", STT_MODEL = "/Users/you/.cache/huggingface/hub/models--mlx-community--parakeet-tdt-0.6b-v3/snapshots/<snapshot>", STT_PORT = "8765", HF_HUB_OFFLINE = "1" }
@@ -184,9 +184,9 @@ sidecar = "parakeet"
 device = "MacBook Pro Microphone"   # optional; ffmpeg's default input otherwise
 ```
 
-`STT_MODEL` is the snapshot folder of the model in the Hugging Face cache, and `env` values are passed as they are, so write the full path there instead of `~`. The interpreter is the one `lib/stt_server.lua` uses for parakeet models, from `uv tool install parakeet-mlx`.
+`STT_MODEL` is the snapshot folder of the model in the Hugging Face cache, and `env` values are passed as they are, so write the full path there instead of `~`. `server.py` names its Python packages in an inline script block, so `uv run --script` builds its venv on the first start; nothing needs installing beforehand except [uv](https://docs.astral.sh/uv/).
 
-A starting sidecar first kills whatever listens on its port. If Hammerspoon already runs the same server on port 8765, point `[speech]` at it instead and leave out `[sidecars.parakeet]`:
+A starting sidecar first kills whatever listens on its port. If another program already runs the same server on port 8765, point `[speech]` at it instead and leave out `[sidecars.parakeet]`:
 
 ```toml
 [speech]

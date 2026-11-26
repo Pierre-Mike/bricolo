@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-# MCP stdio bridge to the local OCR server (apps/ovis_ocr/server.py, :8797).
+# MCP stdio bridge to the local OCR server (apps/ovis-ocr/sidecar/server.py, :8797).
 #
 # Gives any MCP client (Claude Code, Claude Desktop, DSH, LM Studio, ...) one tool,
 # `ocr_to_markdown`, which reads an image or PDF on this Mac and returns Markdown.
-# The model stays in the server Hammerspoon runs; this process only forwards a
+# The model stays in the server the bricolo node runs; this process only forwards a
 # file path, so it starts instantly and holds no memory.
 #
-#   claude mcp add --scope user ovis-ocr -- python3 ~/.hammerspoon/apps/ovis_ocr/mcp.py
+#   claude mcp add --scope user ovis-ocr -- python3 /path/to/bricolo/apps/ovis-ocr/sidecar/mcp.py
 #
 # Standard library only, so any python3 runs it: it speaks newline-delimited
 # JSON-RPC 2.0 on stdin/stdout, which is all the MCP stdio transport is.

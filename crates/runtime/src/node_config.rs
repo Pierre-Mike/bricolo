@@ -14,8 +14,8 @@
 //! greeting = "hi"
 //!
 //! [sidecars.parakeet]     # see bricolo_providers::sidecar
-//! command = "~/.local/share/uv/tools/parakeet-mlx/bin/python"
-//! args = ["~/.hammerspoon/parakeet_server.py"]
+//! command = "~/.local/bin/uv"
+//! args = ["run", "--script", "/path/to/bricolo/apps/shared/sidecars/parakeet/server.py"]
 //! port = 8765
 //!
 //! [speech]                # see bricolo_providers::speech

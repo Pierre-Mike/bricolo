@@ -7,8 +7,8 @@
 //!
 //! ```toml
 //! [sidecars.parakeet]
-//! command = "~/.local/share/uv/tools/parakeet-mlx/bin/python"
-//! args = ["~/.hammerspoon/parakeet_server.py"]
+//! command = "~/.local/bin/uv"
+//! args = ["run", "--script", "/path/to/bricolo/apps/shared/sidecars/parakeet/server.py"]
 //! cwd = "~"                       # optional
 //! port = 8765
 //! health_url = "http://127.0.0.1:8765/health"   # optional, this is the default

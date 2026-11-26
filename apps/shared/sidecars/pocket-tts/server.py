@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.12"
+# dependencies = ["pocket-tts>=4.0.1,<5"]
+# ///
 # Warm pocket-tts synthesis server — the "voice" behind apps/tts.lua.
 #
 #   POST /speak    body=<text>   [header X-Voice: alba]  -> streams the audio as it is made

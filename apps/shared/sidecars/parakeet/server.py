@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.12"
+# dependencies = ["parakeet-mlx>=0.5.1,<0.6"]
+# ///
 # Warm speech-to-text server: ONE model, loaded once, shared by every caller
 # (apps/dictation and the pipecat voice agent both POST to it).
 #
 # The file keeps its historical name because callers point at it by path, but it
 # serves any model the dictation menu offers. Which backend runs is chosen at
-# launch, and the launcher must start it under the matching interpreter:
+# launch, and the launcher must start it with that engine's package. The block
+# above holds parakeet's, so `uv run --script server.py` serves parakeet:
 #
-#   STT_ENGINE=parakeet  parakeet-mlx's python   STT_MODEL=<snapshot dir>
-#   STT_ENGINE=mlxa      mlx-audio's python      STT_MODEL=<HF repo id or dir>
-#   STT_ENGINE=cactus    cactus-needle's python  STT_MODEL=<path to a .cact file>
+#   STT_ENGINE=parakeet  uv run --script server.py                  STT_MODEL=<snapshot dir>
+#   STT_ENGINE=mlxa      uv run --with mlx-audio --script server.py STT_MODEL=<HF repo id or dir>
+#   STT_ENGINE=cactus    cactus-needle's python, server.py          STT_MODEL=<path to a .cact file>
 #
 # The cactus engine runs Cactus Compute's Whistle on the CPU — no MLX, no Metal,
 # no GPU. Its interpreter has no mlx package at all, so every MLX call in this

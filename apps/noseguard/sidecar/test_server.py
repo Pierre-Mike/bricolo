@@ -177,7 +177,7 @@ class GuardTest(unittest.TestCase):
         settings = server.parse_settings('{"camera_id": "cam", "sensitivity": 35}')
         self.guard.start(settings)
         child = self.spawn.daemons()[0]
-        self.assertEqual(child.argv, [server.PYTHON, server.RUNNER])
+        self.assertEqual(child.argv, server.DAEMON)
         env = child.kwargs["env"]
         self.assertEqual((env["NG_CAM_ID"], env["NG_SENS"]), ("cam", "35"))
         self.assertEqual(child.kwargs["pass_fds"], (int(env["NG_EVENT_FD"]),))
@@ -248,6 +248,20 @@ class GuardTest(unittest.TestCase):
         self.assertEqual(guard.cameras(), [{"id": "x", "name": "Cam"}])
         self.assertEqual(calls[0][-1], "list")
         self.assertEqual(self.spawn.children, [])
+
+
+class DaemonCommandTest(unittest.TestCase):
+    def test_uv_runs_the_script_by_default(self):
+        argv = server.daemon_command({"NOSEGUARD_UV": "/x/uv"})
+        self.assertEqual(argv, ["/x/uv", "run", "--script", server.RUNNER])
+
+    def test_a_python_replaces_uv(self):
+        argv = server.daemon_command({"NOSEGUARD_PYTHON": "/v/bin/python", "NOSEGUARD_UV": "/x/uv"})
+        self.assertEqual(argv, ["/v/bin/python", server.RUNNER])
+
+    def test_uv_falls_back_to_its_install_folder(self):
+        argv = server.daemon_command({"PATH": "/nowhere"})
+        self.assertEqual(argv[0], os.path.expanduser("~/.local/bin/uv"))
 
 
 class HttpTest(unittest.TestCase):
