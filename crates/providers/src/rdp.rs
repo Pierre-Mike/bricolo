@@ -237,8 +237,14 @@ impl<R: Runner> Plans<'_, R> {
         let _ = self.run("cmdkey", &[&format!("/delete:TERMSRV/{HOST}")]);
     }
 
+    /// `query session` can exit 1 while it prints the whole table, as on
+    /// the hosted Windows Server runners, so the table wins over the code.
     pub fn session(&self, user: &str) -> Result<Option<u32>, CallError> {
-        Ok(active_session(&self.run("query", &["session"])?, user))
+        let r = self.runner.run("query", &["session"], None, TIMEOUT)?;
+        if r.stdout.contains("SESSIONNAME") {
+            return Ok(active_session(&r.stdout, user));
+        }
+        ok(r, "query").map(|out| active_session(&out, user))
     }
 
     /// Runs `script` as a task in `user`'s session and waits for it.
@@ -313,6 +319,27 @@ mod tests {
         assert_eq!(active_session(out, "nobody"), None);
         assert!(is_server("    InstallationType    REG_SZ    Server"));
         assert!(!is_server("    InstallationType    REG_SZ    Client"));
+    }
+
+    #[test]
+    fn a_session_table_counts_whatever_the_exit_code() {
+        let r = FakeRunner::default();
+        r.answers.lock().unwrap().push((
+            "query session".into(),
+            Ok(crate::cmd::Ran {
+                code: Some(1),
+                stdout: " SESSIONNAME  USERNAME  ID  STATE\r\n>console  runneradmin  2  Active\r\n rdp-tcp  65537  Listen\r\n".into(),
+                stderr: String::new(),
+            }),
+        ));
+        let p = Plans { runner: &r };
+        assert_eq!(p.session("bricolo-agent").unwrap(), None);
+        assert_eq!(p.session("runneradmin").unwrap(), Some(2));
+
+        let broken = FakeRunner::default();
+        broken.fail("query session", 1, "No session exists");
+        let p = Plans { runner: &broken };
+        assert!(p.session("bricolo-agent").is_err());
     }
 
     #[test]
