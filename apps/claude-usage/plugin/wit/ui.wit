@@ -1,0 +1,104 @@
+/// A tile of controls in the plugin's hub card, a display-only widget, and
+/// a few kinds of floating panel, described as data.
+/// The UI process draws them; plugins never ship HTML or JavaScript. What
+/// the user does arrives as a `ui` event. Always runs on this node.
+interface ui {
+  use types.{call-error};
+
+  record switch {
+    id: string,
+    label: string,
+    on: bool,
+  }
+
+  record button {
+    id: string,
+    label: string,
+  }
+
+  /// This plugin's controls, drawn inside its card in the hub. Toggling a
+  /// switch delivers `ui(switch(..))` with its new value; pressing a button
+  /// delivers `ui(button(id))`.
+  record tile {
+    title: string,
+    status-text: string,
+    switches: list<switch>,
+    buttons: list<button>,
+  }
+
+  /// One labelled value of a widget, like `Paris` and `20:05`.
+  record widget-row {
+    label: string,
+    value: string,
+  }
+
+  /// A display-only view of values worth a glance, in the hub's Widgets
+  /// view: the time in other cities, the battery level. It has no switches
+  /// or buttons; those go in the tile. Most plugins have none.
+  record widget {
+    title: string,
+    rows: list<widget-row>,
+  }
+
+  /// A bar across a widget: `label` and `value` above it, `note` under it.
+  /// The bar is split into `marks` equal segments, such as the hours of a
+  /// window or the days of a week, and filled to `fill` percent. `now`, in
+  /// percent, draws a line across it, such as the time gone in that window.
+  record gauge {
+    label: string,
+    value: string,
+    /// 0 to 100.
+    fill: u8,
+    /// 1 to 32 segments; 1 draws a plain bar.
+    marks: u8,
+    /// 0 to 100, or none for no line.
+    now: option<u8>,
+    /// May be empty.
+    note: string,
+  }
+
+  /// A widget with gauges above its rows.
+  record gauge-widget {
+    title: string,
+    gauges: list<gauge>,
+    rows: list<widget-row>,
+  }
+
+  enum panel-kind {
+    /// Text near the bottom of the screen, like live dictation.
+    caption,
+    /// A list to pick one entry from. Delivers `ui(choice(..))`.
+    choice-list,
+    /// A short message that hides itself, after 4 s unless `timeout-ms`.
+    toast,
+    /// Editable text to accept or cancel. Delivers `ui(review(..))`.
+    review,
+  }
+
+  record panel {
+    kind: panel-kind,
+    title: string,
+    /// The caption, the toast, or the text to review.
+    text: string,
+    /// The entries of a choice list; empty for the other kinds.
+    choices: list<string>,
+    /// Hide after this many milliseconds.
+    timeout-ms: option<u32>,
+  }
+
+  /// Sets or replaces this plugin's tile.
+  set-tile: func(tile: tile) -> result<_, call-error>;
+  clear-tile: func() -> result<_, call-error>;
+  /// Sets or replaces this plugin's widget. At most 16 rows.
+  set-widget: func(widget: widget) -> result<_, call-error>;
+  /// Sets or replaces this plugin's widget with gauges. At most 8 gauges
+  /// and 16 rows.
+  set-gauge-widget: func(widget: gauge-widget) -> result<_, call-error>;
+  clear-widget: func() -> result<_, call-error>;
+  /// Shows a panel and returns its id. Panels never take focus from the
+  /// app in front. Showing a kind this plugin already shows replaces that
+  /// panel and keeps its id.
+  show-panel: func(panel: panel) -> result<string, call-error>;
+  /// Hides one of this plugin's panels. Unknown ids are ignored.
+  hide-panel: func(id: string) -> result<_, call-error>;
+}

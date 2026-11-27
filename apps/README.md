@@ -18,6 +18,7 @@ Every app is a plugin.
 | App | Sidecar |
 |---|---|
 | brown-noise | none; plays `~/.config/bricolo/sounds/noise` through `audio` |
+| claude-usage | none; reads `api.anthropic.com` with Claude Code's Keychain sign-in |
 | dictation | `shared/sidecars/parakeet`, through `[speech]` |
 | dsh | `dsh` (3080), the `/opt/homebrew/bin/dsh` program; no source here |
 | karaoke | none |

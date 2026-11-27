@@ -1,0 +1,22 @@
+name = "claude-usage"
+version = "0.1.0"
+description = "Claude plan usage in a hub widget: the 5-hour session marked in hours, the week marked in days."
+# Standard library interfaces the component imports. `bricolo check` fails if
+# the component imports one that is not listed here.
+imports = ["log", "timer", "ui", "shell", "http"]
+# The built component, relative to this folder. Only `bricolo install` reads it.
+wasm = "target/wasm32-wasip2/release/claude_usage.wasm"
+
+# `security` reads Claude Code's sign-in from the login Keychain (item
+# "Claude Code-credentials"). macOS asks once; answer Always Allow.
+[shell]
+allow = ["/usr/bin/security"]
+
+# The usage endpoint Claude Code's /usage reads.
+[http]
+allow = ["api.anthropic.com:443"]
+
+# Defaults passed to init as JSON. Override them in node.toml under
+# [plugins.claude-usage].
+[settings]
+every_ms = 120000
