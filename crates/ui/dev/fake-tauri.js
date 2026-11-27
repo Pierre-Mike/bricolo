@@ -176,6 +176,7 @@
       w.rows[0].value = `${apps.mac.battery}%, ${apps.mac.charging ? "on power" : "on battery"}`;
       widgets["mac-status"] = w;
     }
+    if (running("claude-usage")) widgets["claude-usage"] = copy(F.widgets["claude-usage"]);
     if (running("brown-noise")) {
       const n = apps.noise;
       const label = F.noiseColors.find(([id]) => id === n.color)[1];

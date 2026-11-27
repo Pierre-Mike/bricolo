@@ -73,6 +73,17 @@
       ui: {},
     },
     {
+      name: "claude-usage",
+      version: "0.1.0",
+      state: "running",
+      error: null,
+      restarts: 0,
+      timers: 1,
+      imports: ["log", "timer", "ui", "shell", "http"],
+      settings: [["every_ms", 120000]],
+      ui: {},
+    },
+    {
       name: "brown-noise",
       version: "0.1.0",
       state: "running",
@@ -300,6 +311,14 @@
         { label: "Memory", value: "62%, 20 of 32 GB" },
         { label: "Disk", value: "187 GB free" },
       ],
+    },
+    "claude-usage": {
+      title: "Claude usage",
+      gauges: [
+        { label: "Session", value: "5%", fill: 5, marks: 5, now: 44, note: "Resets in 2 h 48 min" },
+        { label: "Week", value: "48%", fill: 48, marks: 7, now: 41, note: "Resets in 4 d 3 h" },
+      ],
+      rows: [],
     },
   };
 

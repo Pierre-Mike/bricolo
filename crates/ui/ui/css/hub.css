@@ -725,6 +725,75 @@ p.error {
   white-space: nowrap;
 }
 
+/* Gauges (js/widget.js): label and value, a bar of equal segments with a
+   line at now, a note. They span the card, above the rows. */
+.gauges {
+  display: grid;
+  gap: var(--sp-5);
+}
+
+.gauges + .widget-rows {
+  margin-top: var(--sp-5);
+}
+
+.gauge-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--sp-3);
+  margin-bottom: 6px;
+  font-size: var(--fs-md);
+  color: var(--muted);
+}
+
+.gauge-top b {
+  color: var(--text);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.gauge-bar {
+  position: relative;
+  display: flex;
+  gap: 3px;
+  height: 8px;
+}
+
+.gauge-bar i {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--track-off);
+}
+
+.gauge-bar u {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--accent);
+}
+
+.gauge-bar.ahead u {
+  background: var(--warn);
+}
+
+.gauge-bar .now {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--text);
+}
+
+.gauge-note {
+  margin: 6px 0 0;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
 /* Tables */
 
 table {

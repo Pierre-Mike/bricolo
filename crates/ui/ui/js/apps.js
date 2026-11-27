@@ -7,6 +7,7 @@ import { chordLabel, hotkeyChip, hotkeyErrors, shortcutName } from "./chord.js";
 import { badge, commands, emptyState, h, toggle } from "./dom.js";
 import { icon } from "./icons.js";
 import { actions, apps, findApp, health, mainSwitch, model, pinKey, prefs, savePrefs, view } from "./store.js";
+import { widgetBody } from "./widget.js";
 
 const act = (action) => actions.send({ cmd: "ui-action", action });
 
@@ -24,7 +25,7 @@ export function dot(a) {
 }
 
 // One line under the name: what the app says, else its error, else its
-// first widget row.
+// widget's first gauge or row.
 function glance(a) {
   // The card keeps the error short ("init failed"); the drawer has all of it.
   if (a.item.error && health(a) !== "ok") {
@@ -32,7 +33,7 @@ function glance(a) {
     return h("p", { class: `glance ${tone}`, title: a.item.error }, a.item.error.split(":")[0]);
   }
   if (a.tile?.status_text) return h("p", { class: "glance" }, a.tile.status_text);
-  const row = a.widget?.rows?.[0];
+  const row = a.widget?.gauges?.[0] ?? a.widget?.rows?.[0];
   if (row) return h("p", { class: "glance" }, h("span", { class: "meta" }, `${row.label} `), h("b", {}, row.value));
   if (a.item.state !== "running") return h("p", { class: "glance meta" }, a.item.state);
   return null;
@@ -301,7 +302,7 @@ function widgetCard(a) {
     "div",
     { class: "tile widget" },
     h("div", { class: "tile-head" }, h("h3", {}, w.title || a.label)),
-    h("dl", { class: "widget-rows" }, w.rows.flatMap((r) => [h("dt", {}, r.label), h("dd", {}, r.value)])),
+    widgetBody(w),
   );
 }
 

@@ -38,6 +38,8 @@ const MAX_TEXT: usize = 64 * 1024;
 const MAX_CONTROLS: usize = 16;
 const MAX_CHOICES: usize = 50;
 const MAX_ROWS: usize = 16;
+const MAX_GAUGES: usize = 8;
+const MAX_MARKS: u8 = 32;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Switch {
@@ -73,7 +75,25 @@ pub struct WidgetRow {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Widget {
     pub title: String,
+    /// Bars drawn above the rows; empty for a plain widget.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub gauges: Vec<Gauge>,
     pub rows: Vec<WidgetRow>,
+}
+
+/// A bar across a widget: `label` and `value` above it, `note` under it,
+/// split into `marks` segments, filled to `fill` percent, with a line at
+/// `now` percent.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Gauge {
+    pub label: String,
+    pub value: String,
+    pub fill: u8,
+    pub marks: u8,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub now: Option<u8>,
+    #[serde(default)]
+    pub note: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -301,6 +321,26 @@ fn check_widget(widget: &Widget) -> Result<(), CallError> {
     for row in &widget.rows {
         check_len("a row label", &row.label, MAX_TITLE)?;
         check_len("a row value", &row.value, MAX_TITLE)?;
+    }
+    if widget.gauges.len() > MAX_GAUGES {
+        return Err(CallError::Failed(format!(
+            "a widget has at most {MAX_GAUGES} gauges"
+        )));
+    }
+    for g in &widget.gauges {
+        check_len("a gauge label", &g.label, MAX_TITLE)?;
+        check_len("a gauge value", &g.value, MAX_TITLE)?;
+        check_len("a gauge note", &g.note, MAX_TITLE)?;
+        if g.fill > 100 || g.now.is_some_and(|n| n > 100) {
+            return Err(CallError::Failed(
+                "a gauge's fill and now are 0 to 100".into(),
+            ));
+        }
+        if !(1..=MAX_MARKS).contains(&g.marks) {
+            return Err(CallError::Failed(format!(
+                "a gauge has 1 to {MAX_MARKS} marks"
+            )));
+        }
     }
     Ok(())
 }
@@ -586,7 +626,71 @@ mod tests {
                 label: "Paris".into(),
                 value: "20:05".into(),
             }],
+            ..Widget::default()
         }
+    }
+
+    fn gauge() -> Gauge {
+        Gauge {
+            label: "Session".into(),
+            value: "5%".into(),
+            fill: 5,
+            marks: 5,
+            now: Some(44),
+            note: "Resets in 2 h 48 min".into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn gauges_ride_on_the_widget() {
+        let (ui, _) = ui();
+        let caller = Caller::new("usage");
+        let mut w = widget();
+        w.gauges = vec![gauge()];
+        ui.set_widget(&caller, w.clone()).unwrap();
+        assert_eq!(ui.snapshot().widgets["usage"], w);
+        let json = serde_json::to_value(&w).unwrap();
+        assert_eq!(json["gauges"][0]["now"], 44);
+        let plain = serde_json::to_value(widget()).unwrap();
+        assert!(
+            plain.get("gauges").is_none(),
+            "plain widgets stay as they were"
+        );
+    }
+
+    #[tokio::test]
+    async fn bad_gauges_are_refused() {
+        let (ui, _) = ui();
+        let caller = Caller::new("p");
+        for bad in [
+            Gauge {
+                fill: 101,
+                ..gauge()
+            },
+            Gauge {
+                now: Some(101),
+                ..gauge()
+            },
+            Gauge {
+                marks: 0,
+                ..gauge()
+            },
+            Gauge {
+                marks: MAX_MARKS + 1,
+                ..gauge()
+            },
+            Gauge {
+                note: "x".repeat(MAX_TITLE + 1),
+                ..gauge()
+            },
+        ] {
+            let mut w = widget();
+            w.gauges = vec![bad];
+            assert!(ui.set_widget(&caller, w).is_err());
+        }
+        let mut w = widget();
+        w.gauges = vec![gauge(); MAX_GAUGES + 1];
+        assert!(ui.set_widget(&caller, w).is_err());
     }
 
     #[tokio::test]

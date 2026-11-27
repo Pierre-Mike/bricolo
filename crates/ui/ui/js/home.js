@@ -5,6 +5,7 @@ import { openApp } from "./apps.js";
 import { badge, emptyState, h, toggle } from "./dom.js";
 import { icon } from "./icons.js";
 import { actions, apps, model, pinKey, prefs, savePrefs } from "./store.js";
+import { widgetBody } from "./widget.js";
 
 // The library answer, for grants that apps need and the node lacks. Asked
 // at most every 10 seconds while Home shows.
@@ -278,7 +279,7 @@ export function renderHome() {
               "article",
               { class: "tile widget" },
               h("div", { class: "tile-head" }, h("h3", {}, a.widget.title || a.label), h("button", { class: "linkish", title: `Open ${a.label}`, onclick: () => openApp(a.key, "now") }, a.label, icon("chevron", { size: 12 }))),
-              h("dl", { class: "widget-rows" }, a.widget.rows.flatMap((r) => [h("dt", {}, r.label), h("dd", {}, r.value)])),
+              widgetBody(a.widget),
               a.item.state !== "running" ? badge(a.item.state, a.item.state) : null,
             ),
           ),
