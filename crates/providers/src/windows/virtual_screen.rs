@@ -54,7 +54,7 @@ use windows::Win32::System::StationsAndDesktops::{
 };
 use windows::Win32::System::Threading::{
     CREATE_UNICODE_ENVIRONMENT, CreateProcessW, GetExitCodeProcess, PROCESS_INFORMATION,
-    STARTUPINFOW, TerminateProcess,
+    STARTF_USEPOSITION, STARTF_USESIZE, STARTUPINFOW, TerminateProcess,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CWP_SKIPINVISIBLE, ChildWindowFromPointEx, EnumChildWindows, GetClassNameW, GetWindowRect,
@@ -163,9 +163,16 @@ impl ScreenBackend for HiddenDesktops {
     ) -> Result<u32, CallError> {
         let mut command = wide(&win::command_line(program, args));
         let mut desktop = wide(&screen.name);
+        // A window the program opens where Windows chooses (CW_USEDEFAULT)
+        // takes this place and size: it fills the screen, as on Xvfb.
         let startup = STARTUPINFOW {
             cb: size_of::<STARTUPINFOW>() as u32,
             lpDesktop: PWSTR(desktop.as_mut_ptr()),
+            dwFlags: STARTF_USEPOSITION | STARTF_USESIZE,
+            dwX: 0,
+            dwY: 0,
+            dwXSize: screen.width,
+            dwYSize: screen.height,
             ..Default::default()
         };
         let mut info = PROCESS_INFORMATION::default();
