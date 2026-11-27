@@ -24,7 +24,7 @@ use bricolo_providers::mouse::{MouseButton, Point, check_click_count};
 use bricolo_providers::shell::Output;
 use bricolo_providers::system::Power;
 use bricolo_providers::tts::TtsStatus;
-use bricolo_providers::ui::{Button, Panel, PanelKind, Switch, Tile, Widget, WidgetRow};
+use bricolo_providers::ui::{Button, Gauge, Panel, PanelKind, Switch, Tile, Widget, WidgetRow};
 use bricolo_providers::window::{Rect, Screen, WindowInfo};
 use bricolo_providers::{AppChange, AppEvent, FileChange, FileEvent, SystemEvent};
 use mlua::{
@@ -987,7 +987,8 @@ impl FromLua for TileArg {
     }
 }
 
-/// `set_widget{title=, rows={{label=, value=}}}`.
+/// `set_widget{title=, rows={{label=, value=}}, gauges={{label=, value=,
+/// fill=, marks=, now=, note=}}}`; `gauges` is optional.
 struct WidgetArg(Widget);
 
 impl FromLua for WidgetArg {
@@ -1004,10 +1005,33 @@ impl FromLua for WidgetArg {
                 value: entry.get::<Option<String>>("value")?.unwrap_or_default(),
             });
         }
+        let mut gauges = Vec::new();
+        for g in t.get::<Option<Vec<Table>>>("gauges")?.unwrap_or_default() {
+            gauges.push(Gauge {
+                label: g.get::<Option<String>>("label")?.unwrap_or_default(),
+                value: g.get::<Option<String>>("value")?.unwrap_or_default(),
+                fill: percent(g.get::<Option<f64>>("fill")?.unwrap_or(0.0)),
+                marks: g
+                    .get::<Option<f64>>("marks")?
+                    .map_or(1, |m| m.round().clamp(0.0, 255.0) as u8),
+                now: g.get::<Option<f64>>("now")?.map(percent),
+                note: g.get::<Option<String>>("note")?.unwrap_or_default(),
+            });
+        }
         Ok(WidgetArg(Widget {
             title: t.get::<Option<String>>("title")?.unwrap_or_default(),
+            gauges,
             rows,
         }))
+    }
+}
+
+/// A Lua number as a whole percent, clamped to 0 to 100.
+fn percent(n: f64) -> u8 {
+    if n.is_finite() {
+        n.round().clamp(0.0, 100.0) as u8
+    } else {
+        0
     }
 }
 

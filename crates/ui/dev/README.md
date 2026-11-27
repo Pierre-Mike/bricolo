@@ -10,7 +10,7 @@ Then open http://localhost:8770/dev/hub.html, or a panel at http://localhost:877
 
 | File | What it does |
 |---|---|
-| `fixtures.js` | The data: 7 plugins and 2 scripts from `apps/` and `examples/apps`, their tiles, widgets, settings and hotkeys, 3 sidecars, 2 mesh peers, the macOS grants and the capability catalog, and what each source writes to the log |
+| `fixtures.js` | The data: 8 plugins and 2 scripts from `apps/` and `examples/apps`, their tiles, widgets, settings and hotkeys, 3 sidecars, 2 mesh peers, the macOS grants and the capability catalog, and what each source writes to the log |
 | `fake-tauri.js` | `window.__TAURI__`: the commands bricolo-ui registers (`snapshot`, `request`, `start_node`, `hide_hub`, `panel_current`, `dismiss_panel`), the node's answers to every request the hub sends, and the `node`, `status`, `ui`, `logs`, `log` and `panel` events |
 | `serve.py` | A standard-library server for `crates/ui` that sends `Cache-Control: no-store` |
 | `hub.html`, `panel.html` | Copies of `ui/index.html` and `ui/panel.html` that load the two scripts first and the real CSS and modules through `../ui/`. Keep their bodies the same as the originals |

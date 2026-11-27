@@ -34,7 +34,7 @@ use bricolo_providers::mouse::{self as pm, MouseButton, Point};
 use bricolo_providers::shell::Output;
 use bricolo_providers::tts::TtsStatus;
 use bricolo_providers::ui::{
-    Button, Panel, PanelKind, Switch, Tile, UiEvent as ProviderUiEvent, Widget, WidgetRow,
+    Button, Gauge, Panel, PanelKind, Switch, Tile, UiEvent as ProviderUiEvent, Widget, WidgetRow,
 };
 use bricolo_providers::window::{Rect, Screen, WindowInfo};
 
@@ -619,18 +619,42 @@ impl From<ui::Tile> for Tile {
     }
 }
 
+fn widget_rows(rows: Vec<ui::WidgetRow>) -> Vec<WidgetRow> {
+    rows.into_iter()
+        .map(|r| WidgetRow {
+            label: r.label,
+            value: r.value,
+        })
+        .collect()
+}
+
 impl From<ui::Widget> for Widget {
     fn from(w: ui::Widget) -> Self {
         Self {
             title: w.title,
-            rows: w
-                .rows
+            gauges: Vec::new(),
+            rows: widget_rows(w.rows),
+        }
+    }
+}
+
+impl From<ui::GaugeWidget> for Widget {
+    fn from(w: ui::GaugeWidget) -> Self {
+        Self {
+            title: w.title,
+            gauges: w
+                .gauges
                 .into_iter()
-                .map(|r| WidgetRow {
-                    label: r.label,
-                    value: r.value,
+                .map(|g| Gauge {
+                    label: g.label,
+                    value: g.value,
+                    fill: g.fill,
+                    marks: g.marks,
+                    now: g.now,
+                    note: g.note,
                 })
                 .collect(),
+            rows: widget_rows(w.rows),
         }
     }
 }
@@ -662,6 +686,10 @@ impl ui::Host for HostState {
     }
 
     fn set_widget(&mut self, widget: ui::Widget) -> Result<(), CallError> {
+        Ok(self.providers.ui.set_widget(&self.caller, widget.into())?)
+    }
+
+    fn set_gauge_widget(&mut self, widget: ui::GaugeWidget) -> Result<(), CallError> {
         Ok(self.providers.ui.set_widget(&self.caller, widget.into())?)
     }
 

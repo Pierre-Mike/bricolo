@@ -955,7 +955,8 @@ assert(bricolo.ui.set_tile{
   on_switch = function(id, on) bricolo.log.info("switch " .. id .. " " .. tostring(on)) end,
   on_button = function(id) bricolo.log.info("button " .. id) end,
 })
-assert(bricolo.ui.set_widget{title = "Clock", rows = { {label = "Paris", value = "20:05"} }})
+assert(bricolo.ui.set_widget{title = "Clock", rows = { {label = "Paris", value = "20:05"} },
+  gauges = { {label = "Day", value = "40%", fill = 40.4, marks = 24, now = 55, note = "until midnight"} }})
 local cap = assert(bricolo.ui.caption("hello there"))
 local list = assert(bricolo.ui.show_panel{
   kind = "choice_list", title = "Pick", choices = {"one", "two"},
@@ -981,6 +982,11 @@ bricolo.log.info("panels " .. cap .. " " .. list .. " " .. review)
     assert_eq!(
         (widget.rows[0].label.as_str(), widget.rows[0].value.as_str()),
         ("Paris", "20:05")
+    );
+    let g = &widget.gauges[0];
+    assert_eq!(
+        (g.label.as_str(), g.fill, g.marks, g.now, g.note.as_str()),
+        ("Day", 40, 24, Some(55), "until midnight")
     );
     assert_eq!(snap.panels.len(), 3);
     assert_eq!(snap.panels[0].panel.kind, PanelKind::Caption);

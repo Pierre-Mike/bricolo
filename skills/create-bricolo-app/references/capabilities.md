@@ -1319,6 +1319,30 @@ interface ui {
     rows: list<widget-row>,
   }
 
+  /// A bar across a widget: `label` and `value` above it, `note` under it.
+  /// The bar is split into `marks` equal segments, such as the hours of a
+  /// window or the days of a week, and filled to `fill` percent. `now`, in
+  /// percent, draws a line across it, such as the time gone in that window.
+  record gauge {
+    label: string,
+    value: string,
+    /// 0 to 100.
+    fill: u8,
+    /// 1 to 32 segments; 1 draws a plain bar.
+    marks: u8,
+    /// 0 to 100, or none for no line.
+    now: option<u8>,
+    /// May be empty.
+    note: string,
+  }
+
+  /// A widget with gauges above its rows.
+  record gauge-widget {
+    title: string,
+    gauges: list<gauge>,
+    rows: list<widget-row>,
+  }
+
   enum panel-kind {
     /// Text near the bottom of the screen, like live dictation.
     caption,
@@ -1346,6 +1370,9 @@ interface ui {
   clear-tile: func() -> result<_, call-error>;
   /// Sets or replaces this plugin's widget. At most 16 rows.
   set-widget: func(widget: widget) -> result<_, call-error>;
+  /// Sets or replaces this plugin's widget with gauges. At most 8 gauges
+  /// and 16 rows.
+  set-gauge-widget: func(widget: gauge-widget) -> result<_, call-error>;
   clear-widget: func() -> result<_, call-error>;
   /// Shows a panel and returns its id. Panels never take focus from the
   /// app in front. Showing a kind this plugin already shows replaces that
@@ -1362,7 +1389,7 @@ In a script:
 |---|---|---|
 | `bricolo.ui.set_tile{title=, status=, switches=, buttons=, on_switch=, on_button=}` | `true` | Sets or replaces this script's tile in the hub. A switch is `{id, label, on}`, a button `{id, label}`. `on_switch(id, on)` runs when the user toggles a switch, `on_button(id)` when they press a button. |
 | `bricolo.ui.clear_tile()` | `true` | Removes the tile. |
-| `bricolo.ui.set_widget{title=, rows={{label=, value=}}}` | `true` | Sets or replaces this script's widget in the hub's Widgets view: display only, up to 16 rows, each a label and a value. Only for values worth a glance; controls go in the tile. |
+| `bricolo.ui.set_widget{title=, rows={{label=, value=}}, gauges={{label=, value=, fill=, marks=, now=, note=}}}` | `true` | Sets or replaces this script's widget in the hub's Widgets view: display only, up to 16 rows, each a label and a value, and up to 8 gauges drawn above them. A gauge is a bar of `marks` segments (1 to 32) filled to `fill` percent, with a line at `now` percent if set; `gauges` is optional. Only for values worth a glance; controls go in the tile. |
 | `bricolo.ui.clear_widget()` | `true` | Removes the widget. |
 | `bricolo.ui.show_panel{kind=, title=, text=, choices=, timeout_ms=, on_choice=, on_review=}` | panel id | Shows a floating panel. `kind` is `"caption"`, `"toast"`, `"choice_list"` or `"review"`. `on_choice(index, label)` gets a 1-based index, or `nil, nil` when the user dismisses the list. `on_review(accepted, text)` gets the edited text. |
 | `bricolo.ui.caption(text [, timeout_ms])` / `bricolo.ui.toast(text [, timeout_ms])` | panel id | Shortcuts for `show_panel`. A toast hides after 4 seconds unless `timeout_ms` says otherwise. |

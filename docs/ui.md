@@ -206,9 +206,9 @@ match event {
 
 Scripts use `bricolo.ui` with callbacks instead of events; see [scripts.md](scripts.md#the-bricolo-library).
 
-The tile holds the controls; the hub draws its status text on the owner's card and in the Now tab, and its switches and buttons in the Controls tab. The widget is a separate call, for values worth seeing at a glance, on Home and in the Now tab; a plugin whose tile shows its state needs no widget. Options the user sets once belong in `[settings]` ([above](#settings)).
+The tile holds the controls; the hub draws its status text on the owner's card and in the Now tab, and its switches and buttons in the Controls tab. The widget is a separate call, for values worth seeing at a glance, on Home and in the Now tab; a plugin whose tile shows its state needs no widget. A widget can also carry gauges, drawn above its rows: `set-gauge-widget` takes them in plugins, and `gauges` in `bricolo.ui.set_widget` in scripts. A gauge is a label and a value above a bar, and a note under it. The bar is split into `marks` equal segments (claude-usage uses the 5 hours of a session and the 7 days of a week), filled to `fill` percent, with a line at `now` percent, such as the time gone in a window. When the fill runs past the line, the hub draws it amber (`crates/ui/ui/js/widget.js`). Options the user sets once belong in `[settings]` ([above](#settings)).
 
-Limits: titles, labels, widget values and choices up to 200 bytes, panel text up to 64 KiB, 16 switches and 16 buttons per tile with unique ids, 16 rows per widget, and 50 choices per list. A call over a limit answers `failed`. When a plugin or script stops, the node removes its tile, widget and panels.
+Limits: titles, labels, widget values and choices up to 200 bytes, panel text up to 64 KiB, 16 switches and 16 buttons per tile with unique ids, 16 rows and 8 gauges (1 to 32 segments each) per widget, and 50 choices per list. A call over a limit answers `failed`. When a plugin or script stops, the node removes its tile, widget and panels.
 
 The node keeps tiles, widgets and panels even while no hub is connected; a hub that connects later draws them.
 
