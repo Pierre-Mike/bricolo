@@ -549,8 +549,10 @@ async fn win_virtual_screen_hidden_desktop_runs_notepad() {
         png,
         "typing changed nothing in the picture"
     );
+    // The middle of the screen: Notepad opens where it was last closed,
+    // not in the corner, but a window of its size covers the middle.
     p.virtual_screen
-        .click(&caller, screen.id, 20, 20)
+        .click(&caller, screen.id, 400, 300)
         .await
         .unwrap();
     p.virtual_screen
