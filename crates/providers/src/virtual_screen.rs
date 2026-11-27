@@ -442,14 +442,15 @@ mod tests {
         v.type_text(&a, 1, "hi".into()).await.unwrap();
         v.press_key(&a, 1, "ctrl+s".into()).await.unwrap();
         let png = v.capture(&a, 1).await.unwrap();
-        assert!(png.starts_with(&dir.path().join("a/screenshots").display().to_string()));
+        let shots = dir.path().join("a").join("screenshots");
+        assert!(std::path::Path::new(&png).starts_with(&shots), "{png}");
         v.destroy(&a, 1).await.unwrap();
         assert!(v.list(&a).await.unwrap().is_empty());
         assert_eq!(
             *fake.log.lock().unwrap(),
             [
                 "start 1280x800",
-                ":99 /usr/bin/xterm -e top",
+                &format!(":99 {PROGRAM} -e top"),
                 ":99 click 10,20",
                 ":99 type hi",
                 ":99 key ctrl+KeyS",
