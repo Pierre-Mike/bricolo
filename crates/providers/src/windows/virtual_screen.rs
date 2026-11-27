@@ -258,7 +258,14 @@ impl ScreenBackend for HiddenDesktops {
             .map(|(_, r)| (r.left, r.top, r.right - r.left, r.bottom - r.top))
             .collect();
         let Some(i) = win::window_at(&frames, x, y) else {
-            return Err(CallError::Failed(format!("no window at {x},{y}")));
+            let seen: Vec<String> = frames
+                .iter()
+                .map(|(l, t, w, h)| format!("{w}x{h} at {l},{t}"))
+                .collect();
+            return Err(CallError::Failed(format!(
+                "no window at {x},{y}; windows: [{}]",
+                seen.join(", ")
+            )));
         };
         let target = deepest_child(windows[i].0, x, y);
         let mut p = POINT { x, y };
