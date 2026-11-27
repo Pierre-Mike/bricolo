@@ -563,7 +563,7 @@ impl ScreenBackend for WindowsScreens {
         std::fs::write(&rdp, crate::rdp::rdp_file(&account, width, height))
             .map_err(CallError::failed)?;
         p.store_credentials(&account)?;
-        let client = std::process::Command::new("mstsc.exe")
+        let mut client = std::process::Command::new("mstsc.exe")
             .arg(&rdp)
             .spawn()
             .map_err(|e| CallError::Failed(format!("cannot start mstsc: {e}")))?;
@@ -573,6 +573,8 @@ impl ScreenBackend for WindowsScreens {
                 break id;
             }
             if start.elapsed() > std::time::Duration::from_secs(45) {
+                let _ = client.kill();
+                let _ = client.wait();
                 p.forget_credentials();
                 return Err(CallError::Failed(format!(
                     "the Remote Desktop session for {} did not start; check that the account may sign in over Remote Desktop",

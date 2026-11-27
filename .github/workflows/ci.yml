@@ -109,6 +109,15 @@ jobs:
         run: cargo nextest run --workspace --exclude bricolo-ui --no-fail-fast
       # The hosted runner has a desktop session, so the desktop tests run
       # too: UI Automation against Notepad and hidden desktops among them.
+      # Without the RDP test, which needs the account below (with it
+      # stored, screens are RDP sessions, not hidden desktops), and without
+      # the test that waits for a person to lock the screen.
+      - name: Desktop tests
+        run: >-
+          cargo nextest run -p bricolo-providers --test windows_desktop
+          --run-ignored only --test-threads 1 --no-fail-fast
+          -E 'not test(win_system_watch_sees_a_lock_or_a_display_change)
+          and not test(win_rdp_virtual_screen_runs_notepad)'
       # A throwaway account on this throwaway runner, for the RDP-session
       # virtual screen (Windows Server): Remote Desktop on, the account in
       # Remote Desktop Users, its name and password stored where the node
@@ -122,9 +131,7 @@ jobs:
           Set-ItemProperty "HKLM:\System\CurrentControlSet\Control\Terminal Server" fDenyTSConnections 0
           cmdkey /generic:bricolo/virtual-screen-rdp-user /user:bricolo /pass:bricolo-agent
           cmdkey /generic:bricolo/virtual-screen-rdp-password /user:bricolo /pass:$pw
-      # Without the test that waits for a person to lock the screen.
-      - name: Desktop tests
+      - name: RDP virtual screen test
         run: >-
           cargo nextest run -p bricolo-providers --test windows_desktop
-          --run-ignored only --test-threads 1 --no-fail-fast
-          -E 'not test(win_system_watch_sees_a_lock_or_a_display_change)'
+          --run-ignored only -E 'test(win_rdp_virtual_screen_runs_notepad)'
