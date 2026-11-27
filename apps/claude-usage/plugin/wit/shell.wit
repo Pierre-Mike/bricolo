@@ -1,0 +1,19 @@
+/// Runs programs listed under `[shell] allow` in plugin.toml. No shell is
+/// involved: `program` is an exact absolute path from that list, started
+/// with `args`. The program gets HOME, a fixed PATH, and `env`, whose names
+/// must be listed under `[shell] env`. Anything else answers `denied`.
+/// A program that runs past 60 seconds is killed and the call answers
+/// `timeout`.
+interface shell {
+  use types.{call-error};
+
+  record output {
+    /// None when a signal ended the program.
+    code: option<s32>,
+    /// The first MiB of each stream, as UTF-8 (invalid bytes replaced).
+    stdout: string,
+    stderr: string,
+  }
+
+  run: async func(program: string, args: list<string>, env: list<tuple<string, string>>) -> result<output, call-error>;
+}

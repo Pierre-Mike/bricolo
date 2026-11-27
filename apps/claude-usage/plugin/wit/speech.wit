@@ -1,0 +1,11 @@
+/// Speech to text.
+interface speech {
+  use types.{call-error};
+
+  /// Transcribes `audio`. `format` names its encoding as a file
+  /// extension, such as "wav".
+  transcribe: async func(audio: list<u8>, format: string) -> result<string, call-error>;
+  /// Transcribes an audio file. The path must be readable under one of the
+  /// plugin's `disk:` grants.
+  transcribe-file: async func(path: string) -> result<string, call-error>;
+}
