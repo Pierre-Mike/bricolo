@@ -76,8 +76,10 @@ pub fn active_session(output: &str, user: &str) -> Option<u32> {
 }
 
 /// PowerShell that prints the thumbprint of this machine's Remote Desktop
-/// certificate, the newest when there are several.
-pub const THUMBPRINT_SCRIPT: &str = "Get-ChildItem 'Cert:\\LocalMachine\\Remote Desktop' | Sort-Object NotAfter -Descending | Select-Object -First 1 -ExpandProperty Thumbprint";
+/// certificate, the newest when there are several. It opens the store
+/// through .NET, not the `Cert:` drive: a Windows PowerShell started from
+/// PowerShell 7 inherits its module path and has no `Cert:` drive.
+pub const THUMBPRINT_SCRIPT: &str = "$s = New-Object System.Security.Cryptography.X509Certificates.X509Store('Remote Desktop', 'LocalMachine'); $s.Open('ReadOnly'); $s.Certificates | Sort-Object NotAfter -Descending | Select-Object -First 1 -ExpandProperty Thumbprint; $s.Close()";
 
 /// The 40 hex digits of a SHA-1 thumbprint in `output`, upper case.
 pub fn thumbprint(output: &str) -> Option<String> {
@@ -430,7 +432,7 @@ mod tests {
                 "SESSIONNAME USERNAME ID STATE\nrdp-tcp#1 bricolo-agent 2 Active\n",
             );
         r.answer(
-            "powershell.exe -NoProfile -NonInteractive -Command Get-ChildItem",
+            "powershell.exe -NoProfile -NonInteractive -Command $s = New-Object",
             "0a1b2c3d4e5f60718293a4b5c6d7e8f901234567\r\n",
         );
         let p = Plans { runner: &r };
