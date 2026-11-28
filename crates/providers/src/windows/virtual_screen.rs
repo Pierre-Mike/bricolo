@@ -566,12 +566,9 @@ impl ScreenBackend for WindowsScreens {
         let n = self.next.fetch_add(1, Ordering::Relaxed) + 1;
         let dir = std::path::Path::new(SHARED).join(format!("{}-{n}", std::process::id()));
         std::fs::create_dir_all(&dir).map_err(CallError::failed)?;
-        let rdp = dir.join("screen.rdp");
-        std::fs::write(&rdp, crate::rdp::rdp_file(&account, width, height))
-            .map_err(CallError::failed)?;
         p.store_credentials(&account)?;
         let mut client = std::process::Command::new("mstsc.exe")
-            .arg(&rdp)
+            .args(crate::rdp::mstsc_args(width, height))
             .spawn()
             .map_err(|e| CallError::Failed(format!("cannot start mstsc: {e}")))?;
         let start = std::time::Instant::now();

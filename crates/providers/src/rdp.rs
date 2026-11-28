@@ -16,9 +16,10 @@
 //!   /user:bricolo /pass:<account name>`, the same for the password). The node
 //!   never creates accounts.
 //! - `start` stores the connection's credentials for `mstsc`
-//!   (`cmdkey /generic:TERMSRV/127.0.0.2`), writes an `.rdp` file of the
-//!   size asked, starts `mstsc` minimized, and waits for the account's
-//!   session to show as Active in `query session`.
+//!   (`cmdkey /generic:TERMSRV/127.0.0.2`), starts `mstsc /v:127.0.0.2`
+//!   at the size asked (no `.rdp` file: opening one shows a warning that
+//!   waits for a person), and waits for the account's session to show as
+//!   Active in `query session`.
 //! - `launch`, `capture`, `click`, `type-text` and `press-key` each run a
 //!   short PowerShell script as a task in that session; scripts answer
 //!   through files in a folder both accounts can read.
@@ -45,25 +46,17 @@ pub struct Account {
     pub password: String,
 }
 
-/// The `.rdp` file for a session of `width` by `height`.
-pub fn rdp_file(account: &Account, width: u32, height: u32) -> String {
-    [
-        format!("full address:s:{HOST}"),
-        format!("username:s:{}", account.user),
-        "screen mode id:i:1".into(),
-        format!("desktopwidth:i:{width}"),
-        format!("desktopheight:i:{height}"),
-        "session bpp:i:32".into(),
-        "prompt for credentials:i:0".into(),
-        "authentication level:i:0".into(),
-        "redirectclipboard:i:0".into(),
-        "redirectprinters:i:0".into(),
-        "audiomode:i:2".into(),
-        // Keep painting while the client window is minimized.
-        "autoreconnection enabled:i:1".into(),
-        String::new(),
+/// `mstsc`'s arguments for a session of `width` by `height`. A command
+/// line, not an `.rdp` file: since the April 2026 Windows update, opening
+/// an `.rdp` file shows a warning that waits for a person to tick a box,
+/// and the session never starts. The sign-in comes from the credentials
+/// stored for [`HOST`].
+pub fn mstsc_args(width: u32, height: u32) -> Vec<String> {
+    vec![
+        format!("/v:{HOST}"),
+        format!("/w:{width}"),
+        format!("/h:{height}"),
     ]
-    .join("\r\n")
 }
 
 /// The id of `user`'s Active session in `query session` output.
@@ -298,12 +291,8 @@ mod tests {
     }
 
     #[test]
-    fn writes_an_rdp_file_of_the_size_asked() {
-        let f = rdp_file(&account(), 1280, 800);
-        assert!(f.contains("full address:s:127.0.0.2\r\n"));
-        assert!(f.contains("username:s:bricolo-agent\r\n"));
-        assert!(f.contains("desktopwidth:i:1280\r\ndesktopheight:i:800\r\n"));
-        assert!(!f.contains("s3cret"), "the password stays out of the file");
+    fn mstsc_connects_with_the_size_asked() {
+        assert_eq!(mstsc_args(1280, 800), ["/v:127.0.0.2", "/w:1280", "/h:800"]);
     }
 
     #[test]
