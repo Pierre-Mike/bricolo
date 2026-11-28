@@ -131,7 +131,58 @@ jobs:
           Set-ItemProperty "HKLM:\System\CurrentControlSet\Control\Terminal Server" fDenyTSConnections 0
           cmdkey /generic:bricolo/virtual-screen-rdp-user /user:bricolo /pass:bricolo-agent
           cmdkey /generic:bricolo/virtual-screen-rdp-password /user:bricolo /pass:$pw
+      # While the test runs, a screenshot and the visible window titles
+      # every 3 s; after it, the Remote Desktop client and server logs and
+      # the sign-in audit events. All go up as an artifact when it fails.
       - name: RDP virtual screen test
-        run: >-
-          cargo nextest run -p bricolo-providers --test windows_desktop
-          --run-ignored only -E 'test(win_rdp_virtual_screen_runs_notepad)'
+        shell: pwsh
+        run: |
+          $diag = "$env:RUNNER_TEMP\rdp-diag"
+          New-Item -ItemType Directory -Force $diag | Out-Null
+          $watch = Start-Job -ArgumentList $diag -ScriptBlock {
+            param($diag)
+            Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+            $i = 0
+            while ($true) {
+              $b = [System.Windows.Forms.SystemInformation]::VirtualScreen
+              $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+              $g = [System.Drawing.Graphics]::FromImage($bmp)
+              try { $g.CopyFromScreen($b.Left, $b.Top, 0, 0, $bmp.Size) } catch {}
+              $bmp.Save(("{0}\screen-{1:d3}.png" -f $diag, $i), [System.Drawing.Imaging.ImageFormat]::Png)
+              $g.Dispose(); $bmp.Dispose()
+              Get-Process | Where-Object MainWindowTitle |
+                ForEach-Object { "{0:d3} {1} [{2}] {3}" -f $i, $_.ProcessName, $_.Id, $_.MainWindowTitle } |
+                Add-Content "$diag\windows.txt"
+              $i++
+              Start-Sleep -Seconds 3
+            }
+          }
+          cargo nextest run -p bricolo-providers --test windows_desktop --run-ignored only -E 'test(win_rdp_virtual_screen_runs_notepad)'
+          $code = $LASTEXITCODE
+          Stop-Job $watch; Receive-Job $watch *> "$diag\watch-job.txt"
+          query session *> "$diag\query-session.txt"
+          $logs = @(
+            'Microsoft-Windows-TerminalServices-RDPClient/Operational',
+            'Microsoft-Windows-TerminalServices-RemoteConnectionManager/Operational',
+            'Microsoft-Windows-TerminalServices-LocalSessionManager/Operational',
+            'Microsoft-Windows-RemoteDesktopServices-RdpCoreTS/Operational'
+          )
+          foreach ($log in $logs) {
+            "=== $log" | Add-Content "$diag\events.txt"
+            Get-WinEvent -LogName $log -MaxEvents 60 -ErrorAction SilentlyContinue |
+              Sort-Object TimeCreated |
+              Format-Table -AutoSize -Wrap TimeCreated, Id, LevelDisplayName, Message |
+              Out-String -Width 400 | Add-Content "$diag\events.txt"
+          }
+          "=== Security 4624/4625 (sign-ins)" | Add-Content "$diag\events.txt"
+          Get-WinEvent -FilterHashtable @{ LogName = 'Security'; Id = 4624, 4625 } -MaxEvents 40 -ErrorAction SilentlyContinue |
+            Format-List TimeCreated, Id, Message |
+            Out-String -Width 400 | Add-Content "$diag\events.txt"
+          exit $code
+      - name: RDP diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rdp-diagnostics
+          path: ${{ runner.temp }}/rdp-diag
+          if-no-files-found: ignore
