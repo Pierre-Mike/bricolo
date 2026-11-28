@@ -16,7 +16,9 @@
 //!   /user:bricolo /pass:<account name>`, the same for the password). The node
 //!   never creates accounts.
 //! - `start` stores the connection's credentials for `mstsc`
-//!   (`cmdkey /generic:TERMSRV/127.0.0.2`), starts `mstsc /v:127.0.0.2`
+//!   (`cmdkey /generic:TERMSRV/127.0.0.2`), trusts this machine's own
+//!   self-signed Remote Desktop certificate for `127.0.0.2` alone (the
+//!   `CertHash` that "Don't ask me again" stores), starts `mstsc /v:127.0.0.2`
 //!   at the size asked (no `.rdp` file: opening one shows a warning that
 //!   waits for a person), and waits for the account's session to show as
 //!   Active in `query session`.
@@ -71,6 +73,35 @@ pub fn active_session(output: &str, user: &str) -> Option<u32> {
         let state = parts.get(at + 2)?;
         state.eq_ignore_ascii_case("Active").then_some(id)
     })
+}
+
+/// PowerShell that prints the thumbprint of this machine's Remote Desktop
+/// certificate, the newest when there are several.
+pub const THUMBPRINT_SCRIPT: &str = "Get-ChildItem 'Cert:\\LocalMachine\\Remote Desktop' | Sort-Object NotAfter -Descending | Select-Object -First 1 -ExpandProperty Thumbprint";
+
+/// The 40 hex digits of a SHA-1 thumbprint in `output`, upper case.
+pub fn thumbprint(output: &str) -> Option<String> {
+    let t = output.trim();
+    (t.len() == 40 && t.bytes().all(|b| b.is_ascii_hexdigit())).then(|| t.to_ascii_uppercase())
+}
+
+/// `reg add` arguments that trust the certificate `thumbprint` for
+/// [`HOST`] alone: what "Don't ask me again for connections to this
+/// computer" stores. Without it, `mstsc` stops at "The identity of the
+/// remote computer cannot be verified", since the machine's own Remote
+/// Desktop certificate is self-signed.
+pub fn trust_args(thumbprint: &str) -> Vec<String> {
+    vec![
+        "add".into(),
+        format!(r"HKCU\Software\Microsoft\Terminal Server Client\Servers\{HOST}"),
+        "/v".into(),
+        "CertHash".into(),
+        "/t".into(),
+        "REG_BINARY".into(),
+        "/d".into(),
+        thumbprint.into(),
+        "/f".into(),
+    ]
 }
 
 /// Whether `reg query … /v InstallationType` says Windows Server.
@@ -226,6 +257,27 @@ impl<R: Runner> Plans<'_, R> {
         self.run("cmdkey", &[&target, &user, &pass]).map(drop)
     }
 
+    /// Trusts this machine's own Remote Desktop certificate for [`HOST`].
+    pub fn trust_certificate(&self) -> Result<(), CallError> {
+        let out = self.run(
+            "powershell.exe",
+            &[
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                THUMBPRINT_SCRIPT,
+            ],
+        )?;
+        let t = thumbprint(&out).ok_or_else(|| {
+            CallError::Failed(format!(
+                "no Remote Desktop certificate on this machine (got {out:?})"
+            ))
+        })?;
+        let args = trust_args(&t);
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        self.run("reg", &args).map(drop)
+    }
+
     pub fn forget_credentials(&self) {
         let _ = self.run("cmdkey", &[&format!("/delete:TERMSRV/{HOST}")]);
     }
@@ -288,6 +340,17 @@ mod tests {
             user: "bricolo-agent".into(),
             password: "s3cret-pw".into(),
         }
+    }
+
+    #[test]
+    fn thumbprints_are_forty_hex_digits() {
+        assert_eq!(
+            thumbprint("  0a1b2c3d4e5f60718293a4b5c6d7e8f901234567\r\n").as_deref(),
+            Some("0A1B2C3D4E5F60718293A4B5C6D7E8F901234567")
+        );
+        assert_eq!(thumbprint(""), None);
+        assert_eq!(thumbprint("0a1b"), None);
+        assert_eq!(thumbprint("z".repeat(40).as_str()), None);
     }
 
     #[test]
@@ -366,9 +429,14 @@ mod tests {
                 "query session",
                 "SESSIONNAME USERNAME ID STATE\nrdp-tcp#1 bricolo-agent 2 Active\n",
             );
+        r.answer(
+            "powershell.exe -NoProfile -NonInteractive -Command Get-ChildItem",
+            "0a1b2c3d4e5f60718293a4b5c6d7e8f901234567\r\n",
+        );
         let p = Plans { runner: &r };
         p.check_server().unwrap();
         p.store_credentials(&account()).unwrap();
+        p.trust_certificate().unwrap();
         assert_eq!(p.session("bricolo-agent").unwrap(), Some(2));
         p.in_session(&account(), "bricolo-vs-1-1", r"C:\t\a.ps1")
             .unwrap();
@@ -381,6 +449,9 @@ mod tests {
         ));
         assert!(calls.iter().any(|c| c.starts_with("schtasks /create /f /tn bricolo-vs-1-1 /sc once /st 00:00 /it /ru bricolo-agent /rp s3cret-pw /tr powershell.exe")));
         assert!(calls.contains(&"schtasks /run /tn bricolo-vs-1-1".to_string()));
+        assert!(calls.contains(
+            &r"reg add HKCU\Software\Microsoft\Terminal Server Client\Servers\127.0.0.2 /v CertHash /t REG_BINARY /d 0A1B2C3D4E5F60718293A4B5C6D7E8F901234567 /f".to_string()
+        ));
         assert!(calls.contains(&"logoff 2".to_string()));
         assert!(calls.contains(&"cmdkey /delete:TERMSRV/127.0.0.2".to_string()));
 

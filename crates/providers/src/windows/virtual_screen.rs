@@ -567,6 +567,7 @@ impl ScreenBackend for WindowsScreens {
         let dir = std::path::Path::new(SHARED).join(format!("{}-{n}", std::process::id()));
         std::fs::create_dir_all(&dir).map_err(CallError::failed)?;
         p.store_credentials(&account)?;
+        p.trust_certificate()?;
         let mut client = std::process::Command::new("mstsc.exe")
             .args(crate::rdp::mstsc_args(width, height))
             .spawn()
