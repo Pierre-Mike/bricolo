@@ -164,15 +164,6 @@ jobs:
           $code = $LASTEXITCODE
           Stop-Job $watch; Receive-Job $watch *> "$diag\watch-job.txt"
           query session *> "$diag\query-session.txt"
-          & {
-            "=== Remote Desktop store"
-            $st = New-Object System.Security.Cryptography.X509Certificates.X509Store('Remote Desktop', 'LocalMachine')
-            $st.Open('ReadOnly'); $st.Certificates | Format-List Thumbprint, Subject, NotBefore, NotAfter | Out-String; $st.Close()
-            "=== the listener's certificate"
-            (Get-CimInstance -Namespace root\cimv2\TerminalServices -ClassName Win32_TSGeneralSetting -Filter "TerminalName='RDP-Tcp'").SSLCertificateSHA1Hash
-            "=== HKCU Terminal Server Client\Servers"
-            reg query "HKCU\Software\Microsoft\Terminal Server Client\Servers" /s
-          } *> "$diag\certificates.txt"
           $logs = @(
             'Microsoft-Windows-TerminalServices-RDPClient/Operational',
             'Microsoft-Windows-TerminalServices-RemoteConnectionManager/Operational',

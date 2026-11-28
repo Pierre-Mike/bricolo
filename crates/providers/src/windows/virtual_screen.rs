@@ -544,6 +544,40 @@ impl RdpScreen {
     }
 }
 
+impl WindowsScreens {
+    /// Starts `mstsc` and waits for `account`'s session to show as Active.
+    fn connect(
+        &self,
+        p: &crate::rdp::Plans<'static, crate::cmd::SystemRunner>,
+        account: &crate::rdp::Account,
+        width: u32,
+        height: u32,
+    ) -> Result<(std::process::Child, u32), CallError> {
+        let mut client = std::process::Command::new("mstsc.exe")
+            .args(crate::rdp::mstsc_args(width, height))
+            .spawn()
+            .map_err(|e| CallError::Failed(format!("cannot start mstsc: {e}")))?;
+        let start = std::time::Instant::now();
+        loop {
+            match p.session(&account.user) {
+                Ok(Some(id)) => return Ok((client, id)),
+                Ok(None) if start.elapsed() <= std::time::Duration::from_secs(45) => {}
+                found => {
+                    let _ = client.kill();
+                    let _ = client.wait();
+                    p.forget_credentials();
+                    found?;
+                    return Err(CallError::Failed(format!(
+                        "the Remote Desktop session for {} did not start; check that the account may sign in over Remote Desktop",
+                        account.user
+                    )));
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+    }
+}
+
 impl ScreenBackend for WindowsScreens {
     type Screen = Screen;
 
@@ -567,27 +601,10 @@ impl ScreenBackend for WindowsScreens {
         let dir = std::path::Path::new(SHARED).join(format!("{}-{n}", std::process::id()));
         std::fs::create_dir_all(&dir).map_err(CallError::failed)?;
         p.store_credentials(&account)?;
-        p.trust_certificate()?;
-        let mut client = std::process::Command::new("mstsc.exe")
-            .args(crate::rdp::mstsc_args(width, height))
-            .spawn()
-            .map_err(|e| CallError::Failed(format!("cannot start mstsc: {e}")))?;
-        let start = std::time::Instant::now();
-        let session = loop {
-            if let Some(id) = p.session(&account.user)? {
-                break id;
-            }
-            if start.elapsed() > std::time::Duration::from_secs(45) {
-                let _ = client.kill();
-                let _ = client.wait();
-                p.forget_credentials();
-                return Err(CallError::Failed(format!(
-                    "the Remote Desktop session for {} did not start; check that the account may sign in over Remote Desktop",
-                    account.user
-                )));
-            }
-            std::thread::sleep(std::time::Duration::from_millis(500));
-        };
+        let before = p.lower_authentication()?;
+        let connected = self.connect(&p, &account, width, height);
+        p.restore_authentication(before);
+        let (client, session) = connected?;
         let name = format!("rdp-session-{session}");
         Ok((
             Screen::Rdp(RdpScreen {
