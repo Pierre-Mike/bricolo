@@ -126,8 +126,11 @@ jobs:
         shell: pwsh
         run: |
           $pw = "Rh-" + [guid]::NewGuid().ToString("N").Substring(0, 16) + "!"
-          net user bricolo-agent $pw /add
-          net localgroup "Remote Desktop Users" bricolo-agent /add
+          # New-LocalUser, not net user: net user asks Y/N for a password
+          # over 14 characters, gets no answer here and makes no account.
+          $secure = ConvertTo-SecureString $pw -AsPlainText -Force
+          New-LocalUser -Name bricolo-agent -Password $secure -PasswordNeverExpires | Out-Null
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member bricolo-agent
           Set-ItemProperty "HKLM:\System\CurrentControlSet\Control\Terminal Server" fDenyTSConnections 0
           cmdkey /generic:bricolo/virtual-screen-rdp-user /user:bricolo /pass:bricolo-agent
           cmdkey /generic:bricolo/virtual-screen-rdp-password /user:bricolo /pass:$pw
