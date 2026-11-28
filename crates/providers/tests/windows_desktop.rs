@@ -508,6 +508,13 @@ async fn win_virtual_screen_hidden_desktop_runs_notepad() {
     let mut caller = Caller::new("bricolo-test");
     caller.shell = ShellGrant::any();
     let screen = p.virtual_screen.create(&caller, 800, 600).await.unwrap();
+    // With an RDP account stored on Windows Server, as in CI, screens are
+    // RDP sessions; win_rdp_virtual_screen_runs_notepad covers those.
+    if screen.name.starts_with("rdp-session-") {
+        eprintln!("an RDP account is stored: got {}", screen.name);
+        p.virtual_screen.destroy(&caller, screen.id).await.unwrap();
+        return;
+    }
     assert!(
         screen.name.starts_with("bricolo-virtual-"),
         "{}",
@@ -542,8 +549,10 @@ async fn win_virtual_screen_hidden_desktop_runs_notepad() {
         png,
         "typing changed nothing in the picture"
     );
+    // The middle of the screen: Notepad opens where it was last closed,
+    // not in the corner, but a window of its size covers the middle.
     p.virtual_screen
-        .click(&caller, screen.id, 20, 20)
+        .click(&caller, screen.id, 400, 300)
         .await
         .unwrap();
     p.virtual_screen

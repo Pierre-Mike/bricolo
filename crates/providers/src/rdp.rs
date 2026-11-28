@@ -16,9 +16,13 @@
 //!   /user:bricolo /pass:<account name>`, the same for the password). The node
 //!   never creates accounts.
 //! - `start` stores the connection's credentials for `mstsc`
-//!   (`cmdkey /generic:TERMSRV/127.0.0.2`), writes an `.rdp` file of the
-//!   size asked, starts `mstsc` minimized, and waits for the account's
-//!   session to show as Active in `query session`.
+//!   (`cmdkey /generic:TERMSRV/127.0.0.2`), sets this user's
+//!   `AuthenticationLevelOverride` to 0 while it connects (the machine's
+//!   own certificate is self-signed; the old value comes back once the
+//!   session starts or fails to), starts `mstsc /v:127.0.0.2`
+//!   at the size asked (no `.rdp` file: opening one shows a warning that
+//!   waits for a person), and waits for the account's session to show as
+//!   Active in `query session`.
 //! - `launch`, `capture`, `click`, `type-text` and `press-key` each run a
 //!   short PowerShell script as a task in that session; scripts answer
 //!   through files in a folder both accounts can read.
@@ -45,25 +49,17 @@ pub struct Account {
     pub password: String,
 }
 
-/// The `.rdp` file for a session of `width` by `height`.
-pub fn rdp_file(account: &Account, width: u32, height: u32) -> String {
-    [
-        format!("full address:s:{HOST}"),
-        format!("username:s:{}", account.user),
-        "screen mode id:i:1".into(),
-        format!("desktopwidth:i:{width}"),
-        format!("desktopheight:i:{height}"),
-        "session bpp:i:32".into(),
-        "prompt for credentials:i:0".into(),
-        "authentication level:i:0".into(),
-        "redirectclipboard:i:0".into(),
-        "redirectprinters:i:0".into(),
-        "audiomode:i:2".into(),
-        // Keep painting while the client window is minimized.
-        "autoreconnection enabled:i:1".into(),
-        String::new(),
+/// `mstsc`'s arguments for a session of `width` by `height`. A command
+/// line, not an `.rdp` file: since the April 2026 Windows update, opening
+/// an `.rdp` file shows a warning that waits for a person to tick a box,
+/// and the session never starts. The sign-in comes from the credentials
+/// stored for [`HOST`].
+pub fn mstsc_args(width: u32, height: u32) -> Vec<String> {
+    vec![
+        format!("/v:{HOST}"),
+        format!("/w:{width}"),
+        format!("/h:{height}"),
     ]
-    .join("\r\n")
 }
 
 /// The id of `user`'s Active session in `query session` output.
@@ -77,6 +73,21 @@ pub fn active_session(output: &str, user: &str) -> Option<u32> {
         let id: u32 = parts.get(at + 1)?.parse().ok()?;
         let state = parts.get(at + 2)?;
         state.eq_ignore_ascii_case("Active").then_some(id)
+    })
+}
+
+/// Where `mstsc` keeps this user's settings.
+const CLIENT_KEY: &str = r"HKCU\Software\Microsoft\Terminal Server Client";
+const AUTH_OVERRIDE: &str = "AuthenticationLevelOverride";
+
+/// The value of a `REG_DWORD` in `reg query` output, like `0x2`.
+pub fn reg_dword(output: &str, name: &str) -> Option<u32> {
+    output.lines().find_map(|line| {
+        let mut words = line.split_whitespace();
+        if words.next()? != name || words.next()? != "REG_DWORD" {
+            return None;
+        }
+        u32::from_str_radix(words.next()?.trim_start_matches("0x"), 16).ok()
     })
 }
 
@@ -233,12 +244,70 @@ impl<R: Runner> Plans<'_, R> {
         self.run("cmdkey", &[&target, &user, &pass]).map(drop)
     }
 
+    /// Lets `mstsc` connect without asking about the certificate and
+    /// returns the setting it replaced. The machine's own Remote Desktop
+    /// certificate is self-signed, so `mstsc` stops at "The identity of the
+    /// remote computer cannot be verified", and a stored `CertHash` for
+    /// [`HOST`] does not stop it. The setting holds for every connection
+    /// this user makes, so [`Self::restore_authentication`] puts it back as
+    /// soon as the session starts or fails to.
+    pub fn lower_authentication(&self) -> Result<Option<u32>, CallError> {
+        let r = self.runner.run(
+            "reg",
+            &["query", CLIENT_KEY, "/v", AUTH_OVERRIDE],
+            None,
+            TIMEOUT,
+        )?;
+        let before = if r.ok() {
+            reg_dword(&r.stdout, AUTH_OVERRIDE)
+        } else {
+            None
+        };
+        self.set_authentication(0)?;
+        Ok(before)
+    }
+
+    /// Puts back what [`Self::lower_authentication`] replaced.
+    pub fn restore_authentication(&self, before: Option<u32>) {
+        let _ = match before {
+            Some(v) => self.set_authentication(v),
+            None => self
+                .run("reg", &["delete", CLIENT_KEY, "/v", AUTH_OVERRIDE, "/f"])
+                .map(drop),
+        };
+    }
+
+    fn set_authentication(&self, level: u32) -> Result<(), CallError> {
+        let level = level.to_string();
+        self.run(
+            "reg",
+            &[
+                "add",
+                CLIENT_KEY,
+                "/v",
+                AUTH_OVERRIDE,
+                "/t",
+                "REG_DWORD",
+                "/d",
+                &level,
+                "/f",
+            ],
+        )
+        .map(drop)
+    }
+
     pub fn forget_credentials(&self) {
         let _ = self.run("cmdkey", &[&format!("/delete:TERMSRV/{HOST}")]);
     }
 
+    /// `query session` can exit 1 while it prints the whole table, as on
+    /// the hosted Windows Server runners, so the table wins over the code.
     pub fn session(&self, user: &str) -> Result<Option<u32>, CallError> {
-        Ok(active_session(&self.run("query", &["session"])?, user))
+        let r = self.runner.run("query", &["session"], None, TIMEOUT)?;
+        if r.stdout.contains("SESSIONNAME") {
+            return Ok(active_session(&r.stdout, user));
+        }
+        ok(r, "query").map(|out| active_session(&out, user))
     }
 
     /// Runs `script` as a task in `user`'s session and waits for it.
@@ -292,12 +361,16 @@ mod tests {
     }
 
     #[test]
-    fn writes_an_rdp_file_of_the_size_asked() {
-        let f = rdp_file(&account(), 1280, 800);
-        assert!(f.contains("full address:s:127.0.0.2\r\n"));
-        assert!(f.contains("username:s:bricolo-agent\r\n"));
-        assert!(f.contains("desktopwidth:i:1280\r\ndesktopheight:i:800\r\n"));
-        assert!(!f.contains("s3cret"), "the password stays out of the file");
+    fn reads_a_dword_from_reg_query() {
+        let out = "\r\nHKEY_CURRENT_USER\\Software\\Microsoft\\Terminal Server Client\r\n    AuthenticationLevelOverride    REG_DWORD    0x2\r\n";
+        assert_eq!(reg_dword(out, "AuthenticationLevelOverride"), Some(2));
+        assert_eq!(reg_dword(out, "Other"), None);
+        assert_eq!(reg_dword("", "AuthenticationLevelOverride"), None);
+    }
+
+    #[test]
+    fn mstsc_connects_with_the_size_asked() {
+        assert_eq!(mstsc_args(1280, 800), ["/v:127.0.0.2", "/w:1280", "/h:800"]);
     }
 
     #[test]
@@ -313,6 +386,27 @@ mod tests {
         assert_eq!(active_session(out, "nobody"), None);
         assert!(is_server("    InstallationType    REG_SZ    Server"));
         assert!(!is_server("    InstallationType    REG_SZ    Client"));
+    }
+
+    #[test]
+    fn a_session_table_counts_whatever_the_exit_code() {
+        let r = FakeRunner::default();
+        r.answers.lock().unwrap().push((
+            "query session".into(),
+            Ok(crate::cmd::Ran {
+                code: Some(1),
+                stdout: " SESSIONNAME  USERNAME  ID  STATE\r\n>console  runneradmin  2  Active\r\n rdp-tcp  65537  Listen\r\n".into(),
+                stderr: String::new(),
+            }),
+        ));
+        let p = Plans { runner: &r };
+        assert_eq!(p.session("bricolo-agent").unwrap(), None);
+        assert_eq!(p.session("runneradmin").unwrap(), Some(2));
+
+        let broken = FakeRunner::default();
+        broken.fail("query session", 1, "No session exists");
+        let p = Plans { runner: &broken };
+        assert!(p.session("bricolo-agent").is_err());
     }
 
     #[test]
@@ -345,14 +439,24 @@ mod tests {
     #[test]
     fn plans_run_the_commands() {
         let r = FakeRunner::default();
-        r.answer("reg query", "    InstallationType    REG_SZ    Server Core")
-            .answer(
-                "query session",
-                "SESSIONNAME USERNAME ID STATE\nrdp-tcp#1 bricolo-agent 2 Active\n",
-            );
+        r.answer(
+            r"reg query HKLM",
+            "    InstallationType    REG_SZ    Server Core",
+        )
+        .answer(
+            "query session",
+            "SESSIONNAME USERNAME ID STATE\nrdp-tcp#1 bricolo-agent 2 Active\n",
+        );
+        r.answer(
+            r"reg query HKCU\Software\Microsoft\Terminal Server Client /v",
+            "    AuthenticationLevelOverride    REG_DWORD    0x2\r\n",
+        );
         let p = Plans { runner: &r };
         p.check_server().unwrap();
         p.store_credentials(&account()).unwrap();
+        assert_eq!(p.lower_authentication().unwrap(), Some(2));
+        p.restore_authentication(Some(2));
+        p.restore_authentication(None);
         assert_eq!(p.session("bricolo-agent").unwrap(), Some(2));
         p.in_session(&account(), "bricolo-vs-1-1", r"C:\t\a.ps1")
             .unwrap();
@@ -365,6 +469,13 @@ mod tests {
         ));
         assert!(calls.iter().any(|c| c.starts_with("schtasks /create /f /tn bricolo-vs-1-1 /sc once /st 00:00 /it /ru bricolo-agent /rp s3cret-pw /tr powershell.exe")));
         assert!(calls.contains(&"schtasks /run /tn bricolo-vs-1-1".to_string()));
+        for call in [
+            r"reg add HKCU\Software\Microsoft\Terminal Server Client /v AuthenticationLevelOverride /t REG_DWORD /d 0 /f",
+            r"reg add HKCU\Software\Microsoft\Terminal Server Client /v AuthenticationLevelOverride /t REG_DWORD /d 2 /f",
+            r"reg delete HKCU\Software\Microsoft\Terminal Server Client /v AuthenticationLevelOverride /f",
+        ] {
+            assert!(calls.contains(&call.to_string()), "{call} in {calls:?}");
+        }
         assert!(calls.contains(&"logoff 2".to_string()));
         assert!(calls.contains(&"cmdkey /delete:TERMSRV/127.0.0.2".to_string()));
 

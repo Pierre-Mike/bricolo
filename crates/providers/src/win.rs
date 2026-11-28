@@ -864,6 +864,22 @@ pub fn command_line(program: &str, args: &[String]) -> String {
     line
 }
 
+/// A Credential Manager blob as text. bricolo writes UTF-8, but `cmdkey`
+/// and Credential Manager write UTF-16LE, so a blob with a zero byte and an
+/// even length is read as UTF-16. Text never holds a NUL character.
+pub fn credential_text(bytes: &[u8]) -> Option<String> {
+    if bytes.contains(&0) {
+        let (pairs, rest) = bytes.as_chunks::<2>();
+        if !rest.is_empty() {
+            return None;
+        }
+        let units: Vec<u16> = pairs.iter().map(|&c| u16::from_le_bytes(c)).collect();
+        let text = String::from_utf16(&units).ok()?;
+        return (!text.contains('\0')).then_some(text);
+    }
+    String::from_utf8(bytes.to_vec()).ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1370,6 +1386,31 @@ mod tests {
                 height: 40
             })
         );
+    }
+
+    #[test]
+    fn credential_blobs_read_as_utf8_or_utf16() {
+        assert_eq!(
+            credential_text(b"bricolo-agent").as_deref(),
+            Some("bricolo-agent")
+        );
+        let wide: Vec<u8> = "bricolo-agent"
+            .encode_utf16()
+            .flat_map(u16::to_le_bytes)
+            .collect();
+        assert_eq!(credential_text(&wide).as_deref(), Some("bricolo-agent"));
+        let accented: Vec<u8> = "mot-de-passé"
+            .encode_utf16()
+            .flat_map(u16::to_le_bytes)
+            .collect();
+        assert_eq!(credential_text(&accented).as_deref(), Some("mot-de-passé"));
+        assert_eq!(
+            credential_text("héllo".as_bytes()).as_deref(),
+            Some("héllo")
+        );
+        assert_eq!(credential_text(b"a\0b"), None);
+        assert_eq!(credential_text(&[0xff, 0xfe, 0x00]), None);
+        assert_eq!(credential_text(b"").as_deref(), Some(""));
     }
 
     #[test]

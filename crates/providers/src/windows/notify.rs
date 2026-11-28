@@ -98,10 +98,16 @@ fn register() -> Result<(), String> {
     Ok(())
 }
 
-/// A notifier for `aumid` and whether toasts are on for it.
+/// A notifier for `aumid` and whether toasts are on for it. `Setting`
+/// fails with "Element not found" (0x80070490) when Windows keeps no
+/// notification settings for the sender yet, as on a fresh Windows Server;
+/// `Show` still works then, so an unreadable setting counts as on.
 fn notifier(aumid: &str) -> ::windows::core::Result<(ToastNotifier, NotificationSetting)> {
     let notifier = ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(aumid))?;
-    let setting = notifier.Setting()?;
+    let setting = notifier.Setting().unwrap_or_else(|e| {
+        tracing::debug!("notify: no notification setting for {aumid} ({e})");
+        NotificationSetting::Enabled
+    });
     Ok((notifier, setting))
 }
 

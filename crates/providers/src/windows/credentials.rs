@@ -48,9 +48,9 @@ impl Store for CredentialStore {
             CredFree(cred.cast());
             bytes
         };
-        String::from_utf8(bytes)
+        crate::win::credential_text(&bytes)
             .map(Some)
-            .map_err(|_| CallError::Failed("secret is not text".into()))
+            .ok_or_else(|| CallError::Failed("secret is not text".into()))
     }
 
     fn set(&self, account: &str, value: &str) -> Result<(), CallError> {
